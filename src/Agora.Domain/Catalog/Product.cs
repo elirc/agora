@@ -1,3 +1,5 @@
+using Agora.Domain.Values;
+
 namespace Agora.Domain.Catalog;
 
 /// <summary>
@@ -17,15 +19,21 @@ public sealed class Product
     public Sku Sku { get; }
     public string Description { get; private set; }
 
-    // TRY: PriceAmount + PriceCurrency are a decimal and a string — a Money value object
-    // in two trench coats. Sprint 04 promotes them into a real `Money` type (exact decimal
-    // arithmetic, currency as identity, banker's rounding). Grep for these two properties
-    // then and watch how few call sites move — that locality is the payoff of keeping the
-    // pair primitive-but-CONTAINED (never leaked as a loose decimal) until it earns a type.
-    // WHY: no `double` anywhere near money, ever — even in the placeholder. `double` cannot
-    // represent 0.10, so cents drift. Money is base-10 and exact; that means `decimal`.
-    public decimal PriceAmount { get; private set; }
-    public string PriceCurrency { get; private set; }
+    // 📘 THE PAYOFF, COLLECTED. S01 left this as `decimal PriceAmount` + `string PriceCurrency` with
+    // a note promising S04 would promote the pair to a Money type, and an invitation to grep for the
+    // two properties then and count the call sites that move. Here is the count: the DOMAIN gained a
+    // type, the DATABASE gained nothing (Money maps to the same two columns — PriceAmount, decimal
+    // (18,2), and PriceCurrency, char(3) — so AddPricing does not touch this table), and the WIRE
+    // gained nothing (ProductDto still sends a JSON number and a string; see its S01 comment, which
+    // predicted exactly this). Only the layer that DOES ARITHMETIC learned a new word.
+    //
+    // That is what "contained" bought. The pair was never leaked as a loose decimal that anything
+    // could add, round, or multiply on its own — so promoting it was a change of vocabulary, not a
+    // migration. Primitive obsession is not expensive because primitives are bad; it is expensive
+    // because by the time you want the type, forty call sites are already doing money math badly and
+    // every one of them is a decision. Keep the pair together and the type is cheap whenever you
+    // want it. (ADR-0006.)
+    public Money Price { get; private set; }
 
     public DateTimeOffset CreatedAtUtc { get; }
 
@@ -60,8 +68,7 @@ public sealed class Product
         Slug slug,
         Sku sku,
         string description,
-        decimal priceAmount,
-        string priceCurrency,
+        Money price,
         DateTimeOffset createdAtUtc)
     {
         Id = id;
@@ -70,8 +77,7 @@ public sealed class Product
         Slug = slug;
         Sku = sku;
         Description = description;
-        PriceAmount = priceAmount;
-        PriceCurrency = priceCurrency;
+        Price = price;
         CreatedAtUtc = createdAtUtc;
         Version = 1;
     }
@@ -82,8 +88,7 @@ public sealed class Product
         Slug slug,
         Sku sku,
         string? description,
-        decimal priceAmount,
-        string? priceCurrency,
+        Money price,
         DateTimeOffset createdAtUtc)
     {
         if (categoryId == Guid.Empty)
@@ -98,8 +103,7 @@ public sealed class Product
             slug,
             sku,
             ValidDescription(description),
-            ValidPrice(priceAmount),
-            ValidCurrency(priceCurrency),
+            ValidPrice(price),
             createdAtUtc);
     }
 
@@ -117,8 +121,7 @@ public sealed class Product
         Guid categoryId,
         string? name,
         string? description,
-        decimal priceAmount,
-        string? priceCurrency)
+        Money price)
     {
         if (categoryId == Guid.Empty)
         {
@@ -128,8 +131,7 @@ public sealed class Product
         CategoryId = categoryId;
         Name = ValidName(name);
         Description = ValidDescription(description);
-        PriceAmount = ValidPrice(priceAmount);
-        PriceCurrency = ValidCurrency(priceCurrency);
+        Price = ValidPrice(price);
         Version++;
     }
 
@@ -192,27 +194,20 @@ public sealed class Product
         return trimmed;
     }
 
-    private static decimal ValidPrice(decimal priceAmount)
+    // LEARN: look at what this validator no longer does. It used to check the currency's shape too
+    // ("is it three uppercase letters?") — that rule now lives in CurrencyCode.From, so by the time a
+    // Money exists its currency is already real and there is nothing left here to doubt. What remains
+    // is the one rule Money cannot know: money in general MAY be negative (a refund is), but a SHELF
+    // PRICE may not. General invariants belong to the type; local ones belong to the thing they are
+    // local to. Getting that split right is most of what value objects are for.
+    private static Money ValidPrice(Money price)
     {
-        if (priceAmount < 0m)
+        if (price.IsNegative)
         {
             throw new DomainRuleException("Product price cannot be negative.");
         }
 
-        return priceAmount;
-    }
-
-    private static string ValidCurrency(string? currency)
-    {
-        // WHY: still just an ISO 4217 string check, deliberately shallow. When Money lands
-        // (S04) this becomes a CurrencyCode value object; until then the invariant lives
-        // here so no Product exists with a nonsense currency.
-        if (currency is not { Length: 3 } || !currency.All(char.IsAsciiLetterUpper))
-        {
-            throw new DomainRuleException($"'{currency}' is not an ISO 4217 currency code.");
-        }
-
-        return currency;
+        return price;
     }
 
     // WHY: EF Core materialization only.
@@ -220,6 +215,5 @@ public sealed class Product
     {
         Name = null!;
         Description = null!;
-        PriceCurrency = null!;
     }
 }

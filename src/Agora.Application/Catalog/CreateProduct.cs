@@ -2,6 +2,7 @@ using Agora.Application.Abstractions;
 using Agora.Domain;
 using Agora.Domain.Access;
 using Agora.Domain.Catalog;
+using Agora.Domain.Values;
 
 namespace Agora.Application.Catalog;
 
@@ -53,9 +54,15 @@ public sealed class CreateProduct(
             throw new DomainRuleException($"A product with the SKU '{productSku}' already exists.");
         }
 
+        // 📘 THE BOUNDARY IS WHERE PRIMITIVES BECOME VALUES. `priceAmount` and `priceCurrency` came
+        // off an HTTP request as a JSON number and a string; from this line on they are a Money, and
+        // nothing downstream can add them to a different currency, round them a second way, or lose
+        // the pairing between the two. Note the rounding: Money.Of applies Agora's ONE policy here,
+        // at the door — an admin who types 19.999 gets 20.00 stored and 20.00 echoed back, decided
+        // visibly at the boundary rather than surfacing later inside some multiplication. (ADR-0006.)
         var product = Product.Create(
             categoryId, name, productSlug, productSku, description,
-            priceAmount, priceCurrency, clock.GetUtcNow());
+            Money.Of(priceAmount, priceCurrency), clock.GetUtcNow());
 
         products.Add(product);
         await unitOfWork.CommitAsync(cancellationToken);

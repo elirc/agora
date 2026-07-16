@@ -1,0 +1,157 @@
+# Agora — money & time-windowed pricing (Sprint 04)
+# Run against: dotnet run --project src/Agora.Api  (defaults to http://localhost:5158)
+# Seed first:  dotnet run --project src/Agora.Api -- migrate seed
+# VS Code REST Client / JetBrains HTTP client compatible.
+#
+# The storefront needs NO new endpoint for sale prices — they ride the catalog reads a shopper
+# already makes, resolved as of the server's clock. Only the back-office grew routes.
+
+@host = http://localhost:5158
+
+# ── The storefront: a price is what it is right now ───────────────────────────────────────────
+
+### A product with a RUNNING sale (the seed schedules "Cast Iron Week" at 20% off, live now).
+# Read the four pricing fields together — they are the whole contract:
+#   priceAmount           34.50  the LIST price. It does not move when a sale runs.
+#   effectivePriceAmount  27.60  what it costs right now. The server resolved this, in decimal.
+#   savePercent           20     the badge. Derived from the two AMOUNTS, not from the campaign.
+#   sale                  { name, startsAtUtc, endsAtUtc }  — why it is cheaper, and until when.
+GET {{host}}/api/v1/products/cast-iron-skillet-10-inch
+
+### A product with NO sale: effectivePriceAmount == priceAmount, savePercent 0, sale null.
+# Not a special case anyone wrote — it is what the resolver answers when nothing applies.
+GET {{host}}/api/v1/products/bamboo-cutting-board
+
+### A product with a sale scheduled for NEXT WEEK (the seed queues "Spring Planting Weekend").
+# The shopper sees nothing: no sale block, list price. Creating is not activating.
+# The admin sees it queued (see the campaign list below). Same row, two audiences.
+GET {{host}}/api/v1/products/cedar-raised-planter-box
+
+### The list carries the same resolved prices as the detail page — one pricing query, both paths.
+GET {{host}}/api/v1/products?limit=5
+
+### There is deliberately NO ?asOf= parameter. A shopper does not get to ask what this costs next
+# Tuesday: the instant comes from the server's injected clock and is not negotiable from outside.
+# This one is ignored (unknown query params are not honoured — ADR-0002's explicit allowlist).
+GET {{host}}/api/v1/products/cast-iron-skillet-10-inch?asOf=2030-01-01T00:00:00Z
+
+# ── The back-office: scheduling a sale (StoreAdmin only) ──────────────────────────────────────
+
+### Sign in as the Store Admin (sets the agora_session cookie for the requests below).
+# @name login
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@agora.test",
+  "password": "admin-password-dev"
+}
+
+### Every campaign this product has ever had — past, running, and queued.
+# @name campaigns
+# Paste a product id from the admin product list. `isRunning` is resolved SERVER-side against the
+# injected TimeProvider — the browser never compares the window against its own clock.
+GET {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+
+### Schedule a percentage sale for a window of time.
+# Note startsAtUtc/endsAtUtc are INSTANTS (offsets included), not dates. "Starts 2026-08-07" is not
+# a moment until someone says whose midnight — so the client resolves it and the server never guesses
+# with its own locale. Then nobody has to be awake on Friday, or remember to stop it on Monday.
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+Content-Type: application/json
+
+{
+  "name": "Labour Day Weekend",
+  "discountKind": "PercentOff",
+  "discountValue": 20,
+  "startsAtUtc": "2026-09-04T04:00:00Z",
+  "endsAtUtc": "2026-09-08T04:00:00Z"
+}
+
+### A fixed-amount sale. The currency is the PRODUCT's — a discount cannot disagree with the thing
+# it discounts, so the mismatch is unrepresentable rather than validated.
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+Content-Type: application/json
+
+{
+  "name": "Five Off",
+  "discountKind": "AmountOff",
+  "discountValue": 5.00,
+  "startsAtUtc": "2026-09-04T04:00:00Z",
+  "endsAtUtc": "2026-09-08T04:00:00Z"
+}
+
+### End a running sale early: the window is cut short at now. NOT a delete — the row survives, so
+# next quarter's report can still say it ran Friday to Sunday-at-11am when someone pulled it.
+POST {{host}}/api/v1/admin/campaigns/PASTE_CAMPAIGN_ID_HERE/end
+
+### Ending it twice → 422 (a sale that has already ended cannot end again).
+POST {{host}}/api/v1/admin/campaigns/PASTE_CAMPAIGN_ID_HERE/end
+
+# ── The refusals (each one is a rule with a home) ─────────────────────────────────────────────
+
+### A backwards window → 422. There is no instant it could describe. (DateRange.From)
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+Content-Type: application/json
+
+{
+  "name": "Backwards",
+  "discountKind": "PercentOff",
+  "discountValue": 20,
+  "startsAtUtc": "2026-09-08T04:00:00Z",
+  "endsAtUtc": "2026-09-04T04:00:00Z"
+}
+
+### 0% off → 422. A sale that saves nothing is not a sale; refusing it here means the storefront
+# never has to reason about a campaign that changes no price. (Discount.PercentOff)
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+Content-Type: application/json
+
+{
+  "name": "Not A Sale",
+  "discountKind": "PercentOff",
+  "discountValue": 0,
+  "startsAtUtc": "2026-09-04T04:00:00Z",
+  "endsAtUtc": "2026-09-08T04:00:00Z"
+}
+
+### An unknown discount kind → 422 NAMING the legal values (not a binder's "could not convert").
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+Content-Type: application/json
+
+{
+  "name": "Sparkles",
+  "discountKind": "Sparkle",
+  "discountValue": 20,
+  "startsAtUtc": "2026-09-04T04:00:00Z",
+  "endsAtUtc": "2026-09-08T04:00:00Z"
+}
+
+### An archived product cannot be put on sale → 422. It would never show — but it WOULD start
+# applying the moment someone restored the product, which is a surprise nobody scheduled.
+POST {{host}}/api/v1/admin/products/PASTE_ARCHIVED_PRODUCT_ID_HERE/campaigns
+Content-Type: application/json
+
+{
+  "name": "Ghost Sale",
+  "discountKind": "PercentOff",
+  "discountValue": 20,
+  "startsAtUtc": "2026-09-04T04:00:00Z",
+  "endsAtUtc": "2026-09-08T04:00:00Z"
+}
+
+### Anonymous → 401 (we don't know you). Sign out first to see it.
+GET {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+
+### Signed in as Ops → 403 (we know you, you still may not). Roles are capabilities, not a
+# hierarchy: fulfillment is not pricing. Log in as ops@agora.test / ops-password-dev and retry.
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/campaigns
+Content-Type: application/json
+
+{
+  "name": "Not My Job",
+  "discountKind": "PercentOff",
+  "discountValue": 20,
+  "startsAtUtc": "2026-09-04T04:00:00Z",
+  "endsAtUtc": "2026-09-08T04:00:00Z"
+}

@@ -1,4 +1,5 @@
 using Agora.Domain.Catalog;
+using Agora.Domain.Values;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -33,11 +34,34 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasMaxLength(Sku.MaxLength)
             .IsRequired();
 
-        // WHY: precision pinned to (18,2) — money is exact and base-10. This is still a bare
-        // decimal (S04 promotes it to Money); the column shape is already correct so that
-        // promotion is a domain change, not a schema break.
-        builder.Property(p => p.PriceAmount).HasPrecision(18, 2).IsRequired();
-        builder.Property(p => p.PriceCurrency).HasMaxLength(3).IsFixedLength().IsRequired();
+        // 📘 MONEY, MAPPED — and the schema did not move. S01 pinned these two columns at
+        // decimal(18,2) + char(3) and predicted that promoting the pair to a value object would be a
+        // domain change, not a schema break. This is that promotion, and the AddPricing migration
+        // touches no column on this table: the Money is FLATTENED back into the same PriceAmount and
+        // PriceCurrency the database has had since day one. A value object is a fact about your CODE;
+        // the storage can stay exactly as boring as it was.
+        //
+        // A complex property (EF 8+), not OwnsOne: Money is a struct with no identity, and complex
+        // types model precisely that — flattened into the owner's row, no key, no separate tracking.
+        // OwnsOne would demand a reference type and invent a hidden key, i.e. model a value as an
+        // entity, which is the thing value objects exist to stop.
+        builder.ComplexProperty(p => p.Price, price =>
+        {
+            price.Property(m => m.Amount)
+                .HasColumnName("PriceAmount")
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            // The CurrencyCode unwraps to its three letters through a converter — the same shape as
+            // Slug and Sku above. GOTCHA: a converter is what makes EF treat this as a SCALAR;
+            // without one it would try to nest CurrencyCode as a complex type inside a complex type.
+            price.Property(m => m.Currency)
+                .HasColumnName("PriceCurrency")
+                .HasConversion(currency => currency.Code, value => CurrencyCode.From(value))
+                .HasMaxLength(CurrencyCode.Length)
+                .IsFixedLength()
+                .IsRequired();
+        });
 
         builder.Property(p => p.CreatedAtUtc).IsRequired();
 

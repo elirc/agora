@@ -34,6 +34,11 @@ api.MapAuth();
 // set of 403s: catalog reads stay public, but writing the catalog is a privileged act.
 api.MapAdminCatalog();
 
+// S04 — pricing back-office: schedule a sale on a product, end one early. StoreAdmin-only, same as
+// the rest of /admin. The storefront's sale prices need no new route — they ride the catalog reads
+// the shopper already makes, resolved as of the server's clock.
+api.MapAdminPricing();
+
 // `dotnet run -- migrate seed` performs database chores and exits.
 if (await StartupTasks.HandleDatabaseCommandsAsync(app, args))
 {

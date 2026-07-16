@@ -3,6 +3,7 @@ using Agora.Application.Errors;
 using Agora.Domain;
 using Agora.Domain.Access;
 using Agora.Domain.Catalog;
+using Agora.Domain.Values;
 
 namespace Agora.Application.Catalog;
 
@@ -51,7 +52,9 @@ public sealed class UpdateProduct(
             throw new DomainRuleException("That category does not exist.");
         }
 
-        product.UpdateDetails(categoryId, name, description, priceAmount, priceCurrency);
+        // Primitives in, value object one line later — the same boundary conversion CreateProduct
+        // makes, so an edit and a create cannot disagree about what a price is or how it rounds.
+        product.UpdateDetails(categoryId, name, description, Money.Of(priceAmount, priceCurrency));
 
         // The domain has bumped Version to expectedVersion+1. On commit, EF's concurrency token
         // (Version was the ORIGINAL loaded value) closes the tiny remaining window: if some other

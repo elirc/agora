@@ -8,6 +8,7 @@ import {
 } from '../../api/client';
 import { ConflictBanner } from '../../features/admin/components/ConflictBanner';
 import { ProductForm } from '../../features/admin/components/ProductForm';
+import { SaleCampaignPanel } from '../../features/admin/components/SaleCampaignPanel';
 import { useUpdateProduct, versionOf } from '../../features/admin/mutations';
 import { useAdminProduct } from '../../features/admin/queries';
 import { mapServerErrors, type MappedServerErrors } from '../../features/admin/serverErrors';
@@ -153,6 +154,17 @@ export function AdminProductEditPage() {
           onSubmit={(values) => save(values, versionOf(baseline))}
         />
       </div>
+
+      {/* 🔗 pricing lives on the product's own page, below the form, because a sale is a fact ABOUT
+          this product — not a separate thing an admin navigates to and re-finds the product from.
+          Note it is NOT part of the form: scheduling a sale is its own request with its own success
+          and its own failure, and folding it into the product's optimistic-concurrency save would
+          mean a stale name could reject a perfectly good sale. Different facts, different writes. */}
+      <SaleCampaignPanel
+        productId={baseline.id}
+        priceAmount={baseline.priceAmount}
+        priceCurrency={baseline.priceCurrency}
+      />
     </Shell>
   );
 }
