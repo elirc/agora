@@ -52,6 +52,13 @@ public static class AuthEndpoints
             Logout useCase,
             CancellationToken ct) =>
         {
+            // WHY require a user to log out: logout acts on YOUR session, so an anonymous caller
+            // has nothing to act on and gets a 401 — the same uniform authz stance every mutating
+            // endpoint takes. (This guard is the sprint's RED→GREEN lesson: it was missing at
+            // first, the authorization-matrix test went red on the anonymous row, and this line is
+            // what turned it green. A hidden button is not a boundary; the server re-checks.)
+            currentUser.RequireUser();
+
             if (http.Request.Cookies.TryGetValue(SessionCookie.Name, out string? token)
                 && !string.IsNullOrEmpty(token))
             {
