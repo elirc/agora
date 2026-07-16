@@ -11,4 +11,8 @@ public static class AgoraProblems
     public const string NotFound = Base + "not-found";
     public const string InvalidRequest = Base + "invalid-request";
     public const string DomainRuleViolated = Base + "domain-rule-violated";
+
+    // S02: identity. 401 = we don't know who you are; 403 = we do, and you still may not.
+    public const string Unauthenticated = Base + "unauthenticated";
+    public const string Forbidden = Base + "forbidden";
 }

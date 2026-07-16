@@ -1,4 +1,7 @@
+using Agora.Api.Auth;
 using Agora.Api.Errors;
+using Agora.Application.Abstractions;
+using Agora.Application.Auth;
 using Agora.Application.Catalog;
 using Agora.Infrastructure;
 
@@ -27,6 +30,15 @@ public static class ServiceRegistration
         builder.Services.AddScoped<GetCategory>();
         builder.Services.AddScoped<ListProducts>();
         builder.Services.AddScoped<GetProduct>();
+        builder.Services.AddScoped<RegisterCustomer>();
+        builder.Services.AddScoped<Login>();
+        builder.Services.AddScoped<Logout>();
+        builder.Services.AddScoped<GetCurrentUser>();
+
+        // The request's identity: the session-cookie middleware populates RequestCurrentUser;
+        // use cases depend on the ICurrentUser PORT and never see HttpContext.
+        builder.Services.AddScoped<RequestCurrentUser>();
+        builder.Services.AddScoped<ICurrentUser>(sp => sp.GetRequiredService<RequestCurrentUser>());
 
         // Errors → RFC 7807, one translation table for the whole API.
         builder.Services.AddProblemDetails();
