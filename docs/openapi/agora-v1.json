@@ -543,6 +543,91 @@
         }
       }
     },
+    "/api/v1/products/{id}/stock": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "How many of a product a shopper could claim right now.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/cart/reservations": {
+      "post": {
+        "tags": [
+          "Cart"
+        ],
+        "summary": "Hold stock for the caller's cart while they check out.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveStockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Cart"
+        ],
+        "summary": "Give back everything the caller's cart is holding.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/stock/low": {
+      "get": {
+        "tags": [
+          "Admin inventory"
+        ],
+        "summary": "Products at or below a stock threshold — the shop's own view.",
+        "parameters": [
+          {
+            "name": "threshold",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/admin/categories": {
       "post": {
         "tags": [
@@ -1988,6 +2073,27 @@
           }
         }
       },
+      "ReserveStockRequest": {
+        "required": [
+          "productId",
+          "quantity"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "SaleDto": {
         "required": [
           "campaignId",
@@ -2118,6 +2224,12 @@
     },
     {
       "name": "Cart"
+    },
+    {
+      "name": "Catalog"
+    },
+    {
+      "name": "Admin inventory"
     },
     {
       "name": "Admin catalog"

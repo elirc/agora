@@ -3,6 +3,7 @@ using Agora.Application.Errors;
 using Agora.Application.Inventory;
 using Agora.Application.Tests.Fakes;
 using Agora.Domain.Access;
+using Agora.Domain.Catalog;
 using Agora.Domain.Inventory;
 
 namespace Agora.Application.Tests.Inventory;
@@ -258,16 +259,20 @@ public class StockQueryTests
     [Fact]
     public async Task Low_stock_shows_the_shelf_the_claims_and_what_is_left()
     {
+        Category kitchen = CatalogFixtures.CategoryAt("Kitchen", "kitchen", 0);
+        Product skillet = CatalogFixtures.ProductAt(kitchen.Id, "Skillet", "skillet", "AGA-KIT-002", 1);
+        var catalog = new InMemoryProductRepository([skillet], [kitchen]);
+
         var inventory = new InMemoryInventoryRepository();
-        Guid nearlyOut = Guid.NewGuid();
-        inventory.Stock(nearlyOut, 9, Noon);
+        inventory.Stock(skillet.Id, 9, Noon);
 
         // Nine on the shelf, seven in people's carts. Availability is 2 — but sending someone to the
         // stockroom would be a wasted trip, and only showing them "2" is what causes that trip.
-        inventory.Reserve(nearlyOut, Guid.NewGuid(), 7, Noon, ReservationPolicy.HoldFor);
+        inventory.Reserve(skillet.Id, Guid.NewGuid(), 7, Noon, ReservationPolicy.HoldFor);
 
         var list = new ListLowStock(
             inventory,
+            catalog,
             StubCurrentUser.SignedIn(Role.StoreAdmin),
             new FixedClock(Noon));
 
@@ -277,6 +282,33 @@ public class StockQueryTests
         Assert.Equal(9, line.OnHand);
         Assert.Equal(7, line.Reserved);
         Assert.Equal(2, line.Available);
+
+        // The name and SKU are why this report is actionable: "AGA-KIT-002 is nearly out" is not a
+        // sentence anybody can act on without looking something up.
+        Assert.Equal("Skillet", line.Name);
+        Assert.Equal("AGA-KIT-002", line.Sku);
+    }
+
+    [Fact]
+    public async Task An_archived_product_is_not_something_to_reorder()
+    {
+        Category kitchen = CatalogFixtures.CategoryAt("Kitchen", "kitchen", 0);
+        Product discontinued = CatalogFixtures.ProductAt(kitchen.Id, "Old Kettle", "old-kettle", "AGA-KIT-009", 1);
+        discontinued.Archive(Noon.AddMinutes(-1));
+        var catalog = new InMemoryProductRepository([discontinued], [kitchen]);
+
+        var inventory = new InMemoryInventoryRepository();
+        inventory.Stock(discontinued.Id, 1, Noon);
+
+        var list = new ListLowStock(
+            inventory,
+            catalog,
+            StubCurrentUser.SignedIn(Role.StoreAdmin),
+            new FixedClock(Noon));
+
+        // One left on the shelf — and it does not appear, because the shop withdrew it on purpose.
+        // A discontinued skillet running low is not news.
+        Assert.Empty(await list.ExecuteAsync(ListLowStock.DefaultThreshold, default));
     }
 
     [Fact]
@@ -284,6 +316,7 @@ public class StockQueryTests
     {
         var list = new ListLowStock(
             new InMemoryInventoryRepository(),
+            new InMemoryProductRepository([], []),
             StubCurrentUser.SignedIn(Role.Customer),
             new FixedClock(Noon));
 
@@ -295,6 +328,7 @@ public class StockQueryTests
     {
         var list = new ListLowStock(
             new InMemoryInventoryRepository(),
+            new InMemoryProductRepository([], []),
             StubCurrentUser.SignedIn(Role.StoreAdmin),
             new FixedClock(Noon));
 

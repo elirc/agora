@@ -2,6 +2,7 @@ using Agora.Application.Abstractions;
 using Agora.Domain;
 using Agora.Domain.Access;
 using Agora.Domain.Catalog;
+using Agora.Domain.Inventory;
 using Agora.Domain.Values;
 
 namespace Agora.Application.Catalog;
@@ -14,6 +15,7 @@ namespace Agora.Application.Catalog;
 public sealed class CreateProduct(
     IProductRepository products,
     ICategoryRepository categories,
+    IInventoryRepository inventory,
     IUnitOfWork unitOfWork,
     ICurrentUser currentUser,
     TimeProvider clock)
@@ -65,6 +67,27 @@ public sealed class CreateProduct(
             Money.Of(priceAmount, priceCurrency), clock.GetUtcNow());
 
         products.Add(product);
+
+        // 📘 EVERY PRODUCT GETS A SHELF, EVEN AN EMPTY ONE — added in S06, and the reason is a bug the
+        // authorization matrix found rather than a tidiness urge.
+        //
+        // Without this line, a freshly created product has no stock row, and "no stock row" is a state
+        // the rest of the system cannot agree about: GET /products/{id}/stock answers "0 available"
+        // (StockAvailabilityQuery treats a missing row as none), while POST /cart/reservations answers
+        // "404, no such thing" (ReserveStock cannot find a shelf to check). Same product, same instant,
+        // two incompatible stories — which is precisely the contradiction S06 spent three commits
+        // deleting from the pricing code.
+        //
+        // Creating the shelf here makes "no stock row" mean exactly one thing again: THE PRODUCT DOES
+        // NOT EXIST. So the 404 in ReserveStock becomes true instead of merely usual, and 0-on-hand
+        // means what it says — the product is real and we have none of it, which is a different
+        // sentence from "there is no such product" and deserves to stay one.
+        //
+        // 🔗 Note this commits in the SAME unit of work: a product without a shelf cannot exist, not
+        // even for the width of a failed transaction. S02 introduced IUnitOfWork for exactly this —
+        // several writes, one atomic truth.
+        inventory.Add(StockLevel.Create(product.Id, 0, clock.GetUtcNow()));
+
         await unitOfWork.CommitAsync(cancellationToken);
 
         return product;

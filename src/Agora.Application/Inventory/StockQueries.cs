@@ -40,6 +40,7 @@ public sealed class StockAvailabilityQuery(IInventoryRepository inventory, TimeP
 /// <summary>What the shop's own team needs: what is about to run out.</summary>
 public sealed class ListLowStock(
     IInventoryRepository inventory,
+    IProductRepository products,
     ICurrentUser currentUser,
     TimeProvider clock)
 {
@@ -65,21 +66,56 @@ public sealed class ListLowStock(
         IReadOnlyList<StockSnapshot> snapshots =
             await inventory.ListLowStockAsync(threshold, now, cancellationToken);
 
+        if (snapshots.Count == 0)
+        {
+            return [];
+        }
+
+        // ONE query for every name, not one per row. 🔗 Exactly the N+1 S14 hunts — and the reason
+        // this view needs names at all is that "AGA-KIT-002 is nearly out" is not a sentence anybody
+        // can act on without looking something up.
+        IReadOnlyList<Domain.Catalog.Product> named = await products.ListByIdsAsync(
+            [.. snapshots.Select(snapshot => snapshot.Stock.ProductId)],
+            Catalog.ProductStatusFilter.Active,
+            cancellationToken);
+
+        Dictionary<Guid, Domain.Catalog.Product> byId = named.ToDictionary(product => product.Id);
+
         // 📘 THE ADMIN SEES BOTH NUMBERS, and that is the whole design of this view. "2 available" is
         // an emergency if there are two on the shelf and a non-event if there are nine with seven in
         // people's carts — same figure, opposite actions. A low-stock report that only shows
         // availability sends someone to the stockroom to count skillets that are already there.
-        return snapshots
-            .Select(snapshot => new LowStockLine(
-                snapshot.Stock.ProductId,
-                snapshot.Stock.OnHand,
-                StockAvailability.HeldAt(snapshot.Reservations, now),
-                snapshot.AvailableAt(now)))
-            .OrderBy(line => line.Available)
-            .ThenBy(line => line.ProductId)
-            .ToList();
+        // 📘 ARCHIVED PRODUCTS DROP OUT HERE, AND THAT IS THE ANSWER TO A REAL QUESTION rather than a
+        // null guard. This list exists to answer "what should I reorder?" — and a product the shop
+        // deliberately withdrew (S03) is not something to reorder, however few are left on the shelf.
+        // Asking for Active above and inner-joining here means the report says nothing about
+        // discontinued stock, which is exactly right: an archived skillet running low is not news.
+        //
+        // Note the shape: filtering by an ABSENT name is doing real work, not defending against a
+        // missing row. Written as `byId.TryGetValue(...) ? name : "(unknown)"` it would silently turn
+        // a policy into a rendering quirk, and the report would fill up with rows nobody can act on.
+        return
+        [
+            .. snapshots
+                .Where(snapshot => byId.ContainsKey(snapshot.Stock.ProductId))
+                .Select(snapshot => new LowStockLine(
+                    snapshot.Stock.ProductId,
+                    byId[snapshot.Stock.ProductId].Name,
+                    byId[snapshot.Stock.ProductId].Sku.Value,
+                    snapshot.Stock.OnHand,
+                    StockAvailability.HeldAt(snapshot.Reservations, now),
+                    snapshot.AvailableAt(now)))
+                .OrderBy(line => line.Available)
+                .ThenBy(line => line.ProductId)
+        ];
     }
 }
 
 /// <summary>One row of the low-stock view: the shelf, the claims, and what's left.</summary>
-public sealed record LowStockLine(Guid ProductId, int OnHand, int Reserved, int Available);
+public sealed record LowStockLine(
+    Guid ProductId,
+    string Name,
+    string Sku,
+    int OnHand,
+    int Reserved,
+    int Available);
