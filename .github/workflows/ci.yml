@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # ── Backend: the .NET solution — build with warnings as errors, test, format ──────────────
+  # No database, no Docker, no network: pure domain tests, in-memory fakes, EF on in-memory
+  # SQLite, and WebApplicationFactory for the HTTP tests.
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore
+      - name: Build (warnings are errors)
+        run: dotnet build --no-restore -warnaserror
+      - name: Test
+        run: dotnet test --no-build
+      - name: Format check
+        run: dotnet format --verify-no-changes --no-restore
+
+  # ── Frontend: the React storefront — typecheck, lint (incl. the fetch boundary rule), test,
+  # and the OpenAPI type-drift check (the frontend half of "one contract, two consumers"). ───
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: API types drift check
+        run: npm run api-types:check

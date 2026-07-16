@@ -1,0 +1,39 @@
+# Agora — catalog: categories & products (Sprint 01)
+# Run against: dotnet run --project src/Agora.Api  (defaults to http://localhost:5158)
+# VS Code REST Client / JetBrains HTTP client compatible.
+# Endpoints are anonymous in Sprint 01 (auth arrives in Sprint 02).
+
+@host = http://localhost:5158
+
+### List categories (newest first, cursor pagination)
+GET {{host}}/api/v1/categories
+
+### Get one category by slug (slugs are case-insensitive)
+GET {{host}}/api/v1/categories/kitchen-dining
+
+### Unknown category → 404 problem+json
+GET {{host}}/api/v1/categories/no-such-category
+
+### Malformed slug → 422 problem+json (domain-rule-violated)
+GET {{host}}/api/v1/categories/Not%20A%20Slug
+
+### List products (newest first). Follow the X-Next-Cursor RESPONSE HEADER for the next page.
+GET {{host}}/api/v1/products?limit=5
+
+### Next page (paste the X-Next-Cursor value)
+GET {{host}}/api/v1/products?limit=5&cursor=PASTE_CURSOR_HERE
+
+### Filter products by category slug (the one whitelisted filter param)
+GET {{host}}/api/v1/products?category=home-office
+
+### Get one product by slug
+GET {{host}}/api/v1/products/cast-iron-skillet-10-inch
+
+### Unknown product → 404 problem+json
+GET {{host}}/api/v1/products/no-such-product
+
+### Out-of-range limit → 400 problem+json (rejected, not clamped)
+GET {{host}}/api/v1/products?limit=0
+
+### The OpenAPI document (drift-gated in CI; the React app generates its types from it)
+GET {{host}}/openapi/v1.json
