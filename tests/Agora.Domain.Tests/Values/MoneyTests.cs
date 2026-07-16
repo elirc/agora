@@ -144,4 +144,80 @@ public class MoneyTests
     {
         Assert.Equal("19.90 USD", Money.Of(19.9m, Usd).ToString());
     }
+
+    // ── Allocate / Distribute: worked examples. The PROOF is in MoneyPropertyTests. ───────────
+
+    [Fact]
+    public void Allocate_splits_a_dollar_three_ways_without_losing_the_cent()
+    {
+        IReadOnlyList<Money> shares = Money.Of(10.00m, Usd).Allocate(3);
+
+        // 3.34 + 3.33 + 3.33 = 10.00. The naive "divide and round" gives 3.33 × 3 = 9.99 and a cent
+        // that simply stopped existing.
+        Assert.Equal([Money.Of(3.34m, Usd), Money.Of(3.33m, Usd), Money.Of(3.33m, Usd)], shares);
+        Assert.Equal(Money.Of(10.00m, Usd), shares.Aggregate(Money.Zero(Usd), (a, b) => a.Add(b)));
+    }
+
+    [Fact]
+    public void Allocate_divides_evenly_when_it_can()
+    {
+        Assert.Equal([Money.Of(2.50m, Usd), Money.Of(2.50m, Usd)], Money.Of(5.00m, Usd).Allocate(2));
+    }
+
+    [Fact]
+    public void Distribute_splits_in_proportion_to_the_weights()
+    {
+        // The sprint's exercise: a 10% discount across lines priced 3.33 / 3.33 / 3.34. The discount
+        // is $1.00 and the weights are the line prices in cents — the discounted lines must still sum
+        // to the discounted total, and they do, to the cent.
+        IReadOnlyList<Money> shares = Money.Of(1.00m, Usd).Distribute([333, 333, 334]);
+
+        Assert.Equal(Money.Of(1.00m, Usd), shares.Aggregate(Money.Zero(Usd), (a, b) => a.Add(b)));
+
+        // Note WHERE the spare cent lands: on the 334 line. Each line is owed 33.3, 33.3, 33.4 cents;
+        // flooring gives everyone 33 and leaves one cent over; largest-remainder hands it to the
+        // largest remainder, which is the most expensive line. That is not an accident of the
+        // algorithm — it is the property `A_bigger_weight_never_gets_a_smaller_share` pins down.
+        Assert.Equal([Money.Of(0.33m, Usd), Money.Of(0.33m, Usd), Money.Of(0.34m, Usd)], shares);
+    }
+
+    [Fact]
+    public void Distribute_gives_a_zero_weighted_line_nothing()
+    {
+        Assert.Equal(
+            [Money.Of(1.00m, Usd), Money.Zero(Usd)],
+            Money.Of(1.00m, Usd).Distribute([1, 0]));
+    }
+
+    [Fact]
+    public void Distribute_is_deterministic_when_remainders_tie()
+    {
+        // Ties break by index, so the same split run twice hands the spare cent to the same line.
+        // Without that rule two identical invoices could disagree — which is the kind of bug that
+        // gets found by a customer, not a test.
+        Assert.Equal(
+            Money.Of(0.10m, Usd).Distribute([1, 1, 1]),
+            Money.Of(0.10m, Usd).Distribute([1, 1, 1]));
+
+        Assert.Equal(
+            [Money.Of(0.04m, Usd), Money.Of(0.03m, Usd), Money.Of(0.03m, Usd)],
+            Money.Of(0.10m, Usd).Distribute([1, 1, 1]));
+    }
+
+    [Fact]
+    public void Distributing_a_refund_preserves_the_sum_too()
+    {
+        IReadOnlyList<Money> shares = Money.Of(-10.00m, Usd).Allocate(3);
+
+        Assert.Equal(Money.Of(-10.00m, Usd), shares.Aggregate(Money.Zero(Usd), (a, b) => a.Add(b)));
+    }
+
+    [Fact]
+    public void Allocate_and_distribute_refuse_nonsense()
+    {
+        Assert.Throws<DomainRuleException>(() => Money.Of(1m, Usd).Allocate(0));
+        Assert.Throws<DomainRuleException>(() => Money.Of(1m, Usd).Distribute([]));
+        Assert.Throws<DomainRuleException>(() => Money.Of(1m, Usd).Distribute([1, -1]));
+        Assert.Throws<DomainRuleException>(() => Money.Of(1m, Usd).Distribute([0, 0]));
+    }
 }

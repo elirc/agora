@@ -89,6 +89,101 @@ public readonly record struct Money : IComparable<Money>
 
     public Money Negate() => new(-Amount, Currency);
 
+    /// <summary>
+    /// Split this amount into <paramref name="parts"/> equal-as-possible shares whose sum is exactly
+    /// this amount.
+    /// </summary>
+    public IReadOnlyList<Money> Allocate(int parts)
+    {
+        if (parts < 1)
+        {
+            throw new DomainRuleException("Money can only be allocated across one or more parts.");
+        }
+
+        return Distribute([.. Enumerable.Repeat(1, parts)]);
+    }
+
+    /// <summary>
+    /// Split this amount across <paramref name="weights"/> in proportion, without inventing or losing
+    /// a single minor unit: the returned shares always sum to exactly this amount.
+    /// </summary>
+    // 📘 THE PENNY PROBLEM, AND WHY THIS IS THE ONLY HONEST ANSWER.
+    // Split $10.00 three ways. The "obvious" implementation — divide, round each share — gives
+    // 3.33 + 3.33 + 3.33 = $9.99. A cent evaporated. Round the other way and you have $10.02 and a
+    // cent you invented from nothing. Neither is acceptable: a discount allocated across three order
+    // lines MUST re-sum to the discount you promised, or the invoice does not add up and someone in
+    // finance spends a Thursday finding out why.
+    //
+    // So: do the arithmetic in MINOR UNITS (integers — 1000 cents, not 10.00 dollars), floor every
+    // share, then hand the leftover units one at a time to the shares with the largest truncated
+    // remainders. That is the LARGEST-REMAINDER method (the same rule that apportions seats to
+    // parliaments, and for the same reason). It is exact by construction: the leftover is always
+    // fewer units than there are shares, so no share is off by more than one minor unit, and the sum
+    // is preserved because we hand out precisely what flooring took away.
+    //
+    // "Proven, not asserted": this is the claim CsCheck hammers in MoneyAllocationPropertyTests —
+    // thousands of generated amounts × weight vectors, every time asserting the shares sum back to
+    // the original. A worked example is a hope. A property is a proof obligation.
+    // 🔗 S05's cart is the first caller (a cart-level discount across lines); S07's order lines are
+    // the second. The type ships with the guarantee already proven, so neither sprint re-litigates it.
+    public IReadOnlyList<Money> Distribute(IReadOnlyList<int> weights)
+    {
+        ArgumentNullException.ThrowIfNull(weights);
+
+        if (weights.Count == 0)
+        {
+            throw new DomainRuleException("Money can only be distributed across one or more weights.");
+        }
+
+        if (weights.Any(weight => weight < 0))
+        {
+            throw new DomainRuleException("Distribution weights cannot be negative.");
+        }
+
+        // WHY Int128 for the running arithmetic: `units * weight` is the one place this method could
+        // overflow a long (a large amount times a large weight), and an overflow here would silently
+        // produce shares that don't sum. The wider type costs nothing at this call volume and removes
+        // the failure mode entirely rather than documenting it.
+        Int128 total = weights.Aggregate(Int128.Zero, (sum, weight) => sum + weight);
+
+        if (total == Int128.Zero)
+        {
+            throw new DomainRuleException("Distribution weights must not all be zero.");
+        }
+
+        Int128 units = ToMinorUnits();
+        var shares = new Int128[weights.Count];
+        var remainders = new (int Index, Int128 Remainder)[weights.Count];
+        Int128 floored = Int128.Zero;
+
+        for (int i = 0; i < weights.Count; i++)
+        {
+            Int128 numerator = units * weights[i];
+            Int128 share = FloorDivide(numerator, total);
+
+            shares[i] = share;
+            remainders[i] = (i, numerator - (share * total));
+            floored += share;
+        }
+
+        // 0 <= leftover < weights.Count, because flooring each share can lose at most one unit each.
+        // (True flooring — not C#'s truncate-toward-zero — is what keeps this bound valid for a
+        // NEGATIVE amount too, e.g. distributing a refund.)
+        Int128 leftover = units - floored;
+
+        // WHY ThenBy(Index): ties in the remainder must break DETERMINISTICALLY, or the same split
+        // run twice hands the spare cent to different lines and two identical invoices disagree.
+        foreach ((int index, _) in remainders
+                     .OrderByDescending(entry => entry.Remainder)
+                     .ThenBy(entry => entry.Index)
+                     .Take((int)leftover))
+        {
+            shares[index] += Int128.One;
+        }
+
+        return [.. shares.Select(FromMinorUnits)];
+    }
+
     public int CompareTo(Money other) => Amount.CompareTo(SameCurrencyAs(other).Amount);
 
     public static Money operator +(Money left, Money right) => left.Add(right);
@@ -115,4 +210,33 @@ public readonly record struct Money : IComparable<Money>
             ? other
             : throw new DomainRuleException(
                 $"Cannot combine {Currency} and {other.Currency} without an exchange rate.");
+
+    private Int128 ToMinorUnits() => (Int128)decimal.Truncate(Amount * Scale());
+
+    private Money FromMinorUnits(Int128 units) => new((decimal)units / Scale(), Currency);
+
+    // 100 for a 2-minor-unit currency. Exact in decimal, so the round trip through minor units is
+    // lossless — Amount is already at the currency's scale, so the multiply lands on a whole number.
+    private decimal Scale()
+    {
+        decimal scale = 1m;
+
+        for (int i = 0; i < Currency.MinorUnits; i++)
+        {
+            scale *= 10m;
+        }
+
+        return scale;
+    }
+
+    // True floor division: C#'s `/` truncates toward zero, which for a negative numerator would
+    // round the share UP and break the "leftover is smaller than the share count" bound above.
+    private static Int128 FloorDivide(Int128 numerator, Int128 denominator)
+    {
+        Int128 quotient = numerator / denominator;
+
+        return numerator % denominator != Int128.Zero && (numerator < Int128.Zero) != (denominator < Int128.Zero)
+            ? quotient - Int128.One
+            : quotient;
+    }
 }
