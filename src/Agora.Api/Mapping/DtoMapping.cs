@@ -1,3 +1,4 @@
+using Agora.Application.Carts;
 using Agora.Application.Pricing;
 using Agora.Contracts.V1;
 using Agora.Domain.Catalog;
@@ -63,6 +64,38 @@ internal static class DtoMapping
             product.IsArchived,
             product.ArchivedAtUtc,
             product.CreatedAtUtc);
+
+    /// <summary>The cart, priced — the shape every cart endpoint answers with.</summary>
+    // 📘 SAME TRICK AS PricedProduct, ONE SPRINT ON: this maps from a PricedCart, never from a bare
+    // Cart, so there is no way to build a cart response without having resolved prices for it first.
+    // A `ToDto(this Cart)` overload would compile, look reasonable, and have no honest source for
+    // UnitPriceAmount — at which point the only field in reach is PriceAtAddition, and the cart starts
+    // quoting last month's sale. The type makes the wrong mapping unwritable rather than merely
+    // discouraged.
+    public static CartDto ToDto(this PricedCart cart) =>
+        new(
+            [.. cart.Lines.Select(ToDto)],
+            cart.Subtotal.Amount,
+            cart.Subtotal.Currency.Code);
+
+    // Every amount here arrives ALREADY resolved and already multiplied — LineTotalAmount is
+    // PricedCartLine.LineTotal, computed in decimal by Money, not `unitPrice * quantity` written out
+    // here where it would be a decimal today and somebody's double tomorrow. The mapper reshapes. It
+    // never calculates. (S04's rule, and the cart is the first place it would have been tempting.)
+    private static CartLineDto ToDto(PricedCartLine priced) =>
+        new(
+            priced.Line.Id,
+            priced.Line.ProductId,
+            priced.Product.Name,
+            priced.Product.Slug.Value,
+            priced.Product.Sku.Value,
+            priced.Line.Quantity,
+            priced.UnitPrice.Currency.Code,
+            priced.UnitPrice.Amount,
+            priced.LineTotal.Amount,
+            priced.Line.PriceAtAddition.Amount,
+            priced.PriceChanged,
+            priced.Line.AddedAtUtc);
 
     // WHY a CampaignView and not a bare SaleCampaign: "is it running?" needs an instant, the use case
     // has the clock, and a mapper should have neither. Handing it a pre-resolved pair keeps the Api

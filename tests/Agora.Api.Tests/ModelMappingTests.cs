@@ -45,7 +45,24 @@ public class ModelMappingTests : IClassFixture<AgoraApiFactory>
     // DateRange, a Discount and a whole entity, and every public property of every one of them is
     // mapped for real. Value objects cost this fitness function no coverage at all — they only needed
     // it to learn a third way of being mapped.
-    private static readonly HashSet<string> DeliberatelyUnmapped = ["Product.IsArchived"];
+    //
+    // 📘 S05 ADDS THE SECOND ENTRY EVER, and what it looks like matters more than that it exists.
+    // Cart.IsRetired is `RetiredAtUtc is not null` — the identical shape to Product.IsArchived, down
+    // to the timestamp that is its single source of truth. A column beside it would be a second
+    // opinion about the same fact, and the two would eventually disagree.
+    //
+    // So the test of a legitimate entry is not "is it computed?" — it is "does something ELSE already
+    // decide this, such that a column would duplicate a decision?". Both entries pass. And the reason
+    // they live HERE, in a list a reviewer reads, rather than behind a `[NotMapped]` attribute on the
+    // property itself, is that an attribute is invisible in review: it excuses itself, silently, at
+    // the exact site where the mistake would also be made. THE ALLOWLIST IS A REVIEW SURFACE, NOT A
+    // SUPPRESSION MECHANISM. The day it gains an entry nobody can explain in one sentence, the guard
+    // is already gone — and it will not look gone, because the list will look exactly like this.
+    private static readonly HashSet<string> DeliberatelyUnmapped =
+    [
+        "Product.IsArchived",
+        "Cart.IsRetired",
+    ];
 
     [Fact]
     public void Every_public_property_of_every_mapped_entity_is_mapped()

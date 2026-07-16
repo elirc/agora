@@ -51,10 +51,21 @@ public static class AuthHelpers
     }
 
     /// <summary>Pulls the session token value out of a response's Set-Cookie header.</summary>
-    public static string SessionTokenFrom(HttpResponseMessage response)
+    public static string SessionTokenFrom(HttpResponseMessage response) =>
+        CookieValueFrom(response, SessionCookie.Name)
+        ?? throw new InvalidOperationException("No agora_session cookie was set.");
+
+    /// <summary>The value a response's Set-Cookie assigned to <paramref name="name"/>, or null.</summary>
+    // S05 pulled this out of SessionTokenFrom: there are two cookies now, and CartHelpers needs the
+    // same three lines for agora_cart. GOTCHA: a DELETE also arrives as a Set-Cookie — with an empty
+    // value and a past expiry — so this returns "" rather than null when a cookie was CLEARED. The
+    // difference matters to the login tests, which assert the cart cookie was cleared, not absent.
+    public static string? CookieValueFrom(HttpResponseMessage response, string name)
     {
-        string cookie = SetCookieFor(response, SessionCookie.Name)
-            ?? throw new InvalidOperationException("No agora_session cookie was set.");
+        if (SetCookieFor(response, name) is not { } cookie)
+        {
+            return null;
+        }
 
         // "agora_session=<token>; path=/; ..." → the value between '=' and the first ';'.
         int eq = cookie.IndexOf('=');

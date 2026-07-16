@@ -2,6 +2,7 @@ using Agora.Api.Auth;
 using Agora.Api.Errors;
 using Agora.Application.Abstractions;
 using Agora.Application.Auth;
+using Agora.Application.Carts;
 using Agora.Application.Catalog;
 using Agora.Application.Pricing;
 using Agora.Infrastructure;
@@ -49,6 +50,18 @@ public static class ServiceRegistration
         builder.Services.AddScoped<CreateSaleCampaign>();
         builder.Services.AddScoped<ListSaleCampaigns>();
         builder.Services.AddScoped<EndSaleCampaign>();
+
+        // S05 — the cart. CartLookup resolves "whose cart is this?" (owned or anonymous token) and
+        // CartPricing re-resolves live prices through S04's ProductPricing; both are collaborators
+        // the use cases share rather than a fifth copy of the same query.
+        builder.Services.AddScoped<CartLookup>();
+        builder.Services.AddScoped<CartPricing>();
+        builder.Services.AddScoped<GetCart>();
+        builder.Services.AddScoped<AddCartLine>();
+        builder.Services.AddScoped<UpdateCartLineQuantity>();
+        builder.Services.AddScoped<RemoveCartLine>();
+        builder.Services.AddScoped<ClearCart>();
+        builder.Services.AddScoped<MergeCarts>();
 
         builder.Services.AddScoped<RegisterCustomer>();
         builder.Services.AddScoped<Login>();
