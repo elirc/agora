@@ -22,6 +22,10 @@ export type SaleDto = components['schemas']['SaleDto'];
 export type AdminSaleCampaignDto = components['schemas']['AdminSaleCampaignDto'];
 export type CreateSaleCampaignRequest = components['schemas']['CreateSaleCampaignRequest'];
 
+// S05 — the cart. Every amount on these arrives resolved: unit price, line total, subtotal.
+export type CartDto = components['schemas']['CartDto'];
+export type CartLineDto = components['schemas']['CartLineDto'];
+
 /** One page of results plus the cursor for the next one (mirrors the backend's Page<T>). */
 export interface Page<T> {
   items: T[];
@@ -264,6 +268,58 @@ export async function endSaleCampaign(campaignId: string): Promise<AdminSaleCamp
     {},
   );
   return (await response.json()) as AdminSaleCampaignDto;
+}
+
+// ── Cart (S05) ───────────────────────────────────────────────────────────────────────────────
+//
+// 📘 COUNT THE LINES OF CART-IDENTITY CODE IN THIS APP. It is zero, and that is the point of the
+// whole sprint viewed from here. The `agora_cart` cookie is HttpOnly — JavaScript cannot read it,
+// write it, or attach it — and the one `credentials: 'include'` in `request()` (added in S02 for the
+// session) already makes the browser send it. So the client has no token to store, no token to leak
+// to an XSS, no token to accidentally log, and no way to get the identity wrong. The server mints
+// it, the browser keeps it, and this layer never learns it exists.
+//
+// ⚠️ compare the localStorage cart the design debate rejected: it would put the whole cart in a place
+// every script on the page can read and write, and every function below would have to decide whether
+// to trust it. Not storing something is the strongest guarantee available about it.
+
+async function patchJson(path: string, body: unknown): Promise<Response> {
+  return request(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** The caller's cart. Always 200 — an empty cart is a cart, and everyone has one. */
+export async function getCart(): Promise<CartDto> {
+  const response = await request('/api/v1/cart');
+  return (await response.json()) as CartDto;
+}
+
+// WHY every one of these returns the whole CartDto rather than void or the changed line: the response
+// IS the authoritative cart, subtotal and all. The alternative is a second round trip, or adding the
+// numbers up here — and adding money up here is the one thing this app must never do (see format.ts).
+export async function addCartLine(productId: string, quantity: number): Promise<CartDto> {
+  const response = await postJson('/api/v1/cart/lines', { productId, quantity });
+  return (await response.json()) as CartDto;
+}
+
+export async function setCartLineQuantity(lineId: string, quantity: number): Promise<CartDto> {
+  const response = await patchJson(`/api/v1/cart/lines/${encodeURIComponent(lineId)}`, { quantity });
+  return (await response.json()) as CartDto;
+}
+
+export async function removeCartLine(lineId: string): Promise<CartDto> {
+  const response = await request(`/api/v1/cart/lines/${encodeURIComponent(lineId)}`, {
+    method: 'DELETE',
+  });
+  return (await response.json()) as CartDto;
+}
+
+export async function clearCart(): Promise<CartDto> {
+  const response = await request('/api/v1/cart', { method: 'DELETE' });
+  return (await response.json()) as CartDto;
 }
 
 /**
