@@ -23,9 +23,11 @@ public class ModelMappingTests : IClassFixture<AgoraApiFactory>
 
     // WHY: EF's runtime model cannot distinguish "deliberately Ignore()d" from "silently
     // forgotten" — so deliberate exceptions are declared HERE, visibly, where a reviewer sees
-    // every one. A computed property belongs on this list; a timestamp never does. Empty in
-    // Sprint 01 because the catalog entities have no computed properties yet.
-    private static readonly HashSet<string> DeliberatelyUnmapped = [];
+    // every one. A computed property belongs on this list; a timestamp never does.
+    //
+    // Product.IsArchived is computed from ArchivedAtUtc (its single source of truth), so it has no
+    // column by design — S03 adds the first entry to what was an empty allowlist in S01.
+    private static readonly HashSet<string> DeliberatelyUnmapped = ["Product.IsArchived"];
 
     [Fact]
     public void Every_public_property_of_every_mapped_entity_is_mapped()

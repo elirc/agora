@@ -94,4 +94,118 @@ public class ProductTests
     {
         Assert.Throws<DomainRuleException>(() => Make(currency: currency));
     }
+
+    // ── Version + mutation (S03) ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void New_product_is_born_at_version_1_and_active()
+    {
+        Product product = Make();
+
+        Assert.Equal(1, product.Version);
+        Assert.False(product.IsArchived);
+        Assert.Null(product.ArchivedAtUtc);
+    }
+
+    [Fact]
+    public void UpdateDetails_changes_the_mutable_fields_and_bumps_the_version()
+    {
+        Product product = Make();
+        Guid newCategory = Guid.NewGuid();
+
+        product.UpdateDetails(newCategory, "  Renamed Skillet  ", "  New copy.  ", 40.00m, "usd".ToUpperInvariant());
+
+        Assert.Equal(newCategory, product.CategoryId);
+        Assert.Equal("Renamed Skillet", product.Name);
+        Assert.Equal("New copy.", product.Description);
+        Assert.Equal(40.00m, product.PriceAmount);
+        Assert.Equal(2, product.Version);
+    }
+
+    [Fact]
+    public void UpdateDetails_does_not_change_the_slug_or_sku()
+    {
+        Product product = Make();
+        Slug originalSlug = product.Slug;
+        Sku originalSku = product.Sku;
+
+        product.UpdateDetails(product.CategoryId, "A Totally Different Name", "desc", 1m, "USD");
+
+        // The slug is a permalink and the SKU a warehouse identity — a rename touches neither.
+        Assert.Equal(originalSlug, product.Slug);
+        Assert.Equal(originalSku, product.Sku);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void UpdateDetails_rejects_a_blank_name(string name)
+    {
+        Product product = Make();
+
+        Assert.Throws<DomainRuleException>(() =>
+            product.UpdateDetails(product.CategoryId, name, "desc", 1m, "USD"));
+    }
+
+    [Fact]
+    public void UpdateDetails_rejects_a_negative_price_and_bad_currency()
+    {
+        Product product = Make();
+
+        Assert.Throws<DomainRuleException>(() =>
+            product.UpdateDetails(product.CategoryId, "Name", "desc", -1m, "USD"));
+        Assert.Throws<DomainRuleException>(() =>
+            product.UpdateDetails(product.CategoryId, "Name", "desc", 1m, "usd"));
+    }
+
+    [Fact]
+    public void UpdateDetails_rejects_an_empty_category()
+    {
+        Product product = Make();
+
+        Assert.Throws<DomainRuleException>(() =>
+            product.UpdateDetails(Guid.Empty, "Name", "desc", 1m, "USD"));
+    }
+
+    [Fact]
+    public void Archive_records_the_timestamp_and_bumps_the_version()
+    {
+        Product product = Make();
+
+        product.Archive(SomeInstant);
+
+        Assert.True(product.IsArchived);
+        Assert.Equal(SomeInstant, product.ArchivedAtUtc);
+        Assert.Equal(2, product.Version);
+    }
+
+    [Fact]
+    public void Archiving_an_already_archived_product_throws()
+    {
+        Product product = Make();
+        product.Archive(SomeInstant);
+
+        Assert.Throws<DomainRuleException>(() => product.Archive(SomeInstant));
+    }
+
+    [Fact]
+    public void Restore_clears_the_archive_and_bumps_the_version()
+    {
+        Product product = Make();
+        product.Archive(SomeInstant);
+
+        product.Restore();
+
+        Assert.False(product.IsArchived);
+        Assert.Null(product.ArchivedAtUtc);
+        Assert.Equal(3, product.Version); // create(1) → archive(2) → restore(3)
+    }
+
+    [Fact]
+    public void Restoring_a_product_that_is_not_archived_throws()
+    {
+        Product product = Make();
+
+        Assert.Throws<DomainRuleException>(() => product.Restore());
+    }
 }

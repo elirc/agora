@@ -1,0 +1,110 @@
+# Agora — admin catalog: create / edit / archive / restore (Sprint 03)
+# Run against: dotnet run --project src/Agora.Api  (defaults to http://localhost:5158)
+# Seed first:  dotnet run --project src/Agora.Api -- migrate seed
+#
+# EVERY endpoint below is StoreAdmin-only. Sign in as the seeded admin so the agora_session cookie
+# rides along (the REST Client keeps a per-file cookie jar). A Customer or Ops session gets 403;
+# anonymous gets 401. Catalog READS stay public (see catalog.http).
+
+@host = http://localhost:5158
+
+### Sign in as the seeded STORE ADMIN → 200 + agora_session cookie (dev creds; see AgoraSeeder)
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "admin@agora.test", "password": "admin-password-dev" }
+
+### List categories (public) — grab a categoryId for the create calls below
+GET {{host}}/api/v1/categories
+
+### Create a category → 201 AdminCategoryDto { id, name, slug, version, createdAtUtc }.
+### A blank/absent slug is generated from the name ("Seasonal & Gifts" → "seasonal-gifts").
+POST {{host}}/api/v1/admin/categories
+Content-Type: application/json
+
+{ "name": "Seasonal & Gifts", "slug": null }
+
+### Create a product → 201 AdminProductDto (note version:1, isArchived:false).
+### Paste a real categoryId from the categories list above. Slug generates from the name.
+POST {{host}}/api/v1/admin/products
+Content-Type: application/json
+
+{
+  "categoryId": "PASTE_CATEGORY_ID_HERE",
+  "name": "Enamel Camp Mug",
+  "slug": null,
+  "sku": "AGA-GDN-050",
+  "description": "A speckled enamel mug that shrugs off a dropped campsite morning.",
+  "priceAmount": 16.00,
+  "priceCurrency": "USD"
+}
+
+### Duplicate SKU (or slug) → 422 problem+json (domain-rule-violated). Archived rows still reserve theirs.
+POST {{host}}/api/v1/admin/products
+Content-Type: application/json
+
+{
+  "categoryId": "PASTE_CATEGORY_ID_HERE",
+  "name": "Another Mug",
+  "slug": null,
+  "sku": "AGA-GDN-050",
+  "description": "Collides on SKU.",
+  "priceAmount": 9.00,
+  "priceCurrency": "USD"
+}
+
+### The admin product list — INCLUDES archived rows (?status=all is the default). Also active|archived.
+GET {{host}}/api/v1/admin/products?status=all
+
+### One admin product by id (sees archived too) → 200 AdminProductDto. Paste an id from the list.
+GET {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE
+
+### Update a product — FULL update, carries expectedVersion. Slug & SKU are immutable (not accepted).
+### Present the version you last read; on success the response version is +1.
+PUT {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE
+Content-Type: application/json
+
+{
+  "categoryId": "PASTE_CATEGORY_ID_HERE",
+  "name": "Enamel Camp Mug, 12oz",
+  "description": "Now with the size in the name.",
+  "priceAmount": 17.50,
+  "priceCurrency": "USD",
+  "expectedVersion": 1
+}
+
+### THE LOST-UPDATE DEMO. Run the PUT above once (v1 → v2). Now run THIS one, still presenting
+### expectedVersion:1 → 409 problem+json (type …/conflict). Read the `current` member: it is the
+### AdminProductDto as it stands now (v2), so a client can rebase. This is what the React banner shows.
+PUT {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE
+Content-Type: application/json
+
+{
+  "categoryId": "PASTE_CATEGORY_ID_HERE",
+  "name": "A Stale Edit",
+  "description": "Built on v1, which no longer exists.",
+  "priceAmount": 99.00,
+  "priceCurrency": "USD",
+  "expectedVersion": 1
+}
+
+### Archive a product → 200; it leaves the storefront but stays here. Carries expectedVersion.
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/archive
+Content-Type: application/json
+
+{ "expectedVersion": 2 }
+
+### Prove it left the storefront → 404 (anonymous, archived slug). Compare with the admin list, which still shows it.
+GET {{host}}/api/v1/products/enamel-camp-mug
+
+### Restore it → 200; back on the storefront. Present the version from the archive response.
+POST {{host}}/api/v1/admin/products/PASTE_PRODUCT_ID_HERE/restore
+Content-Type: application/json
+
+{ "expectedVersion": 3 }
+
+### Rename a category → 200 AdminCategoryDto (name changes; slug does NOT — it's a permalink).
+PUT {{host}}/api/v1/admin/categories/PASTE_CATEGORY_ID_HERE
+Content-Type: application/json
+
+{ "name": "Seasonal, Gifts & More", "expectedVersion": 1 }

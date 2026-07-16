@@ -10,7 +10,9 @@ public sealed class GetProduct(IProductRepository products)
     {
         Slug slug = Slug.From(rawSlug);
 
-        Product? product = await products.FindBySlugAsync(slug, cancellationToken);
+        // WHY Active: an archived product is a 404 to a shopper, not a 200 with a hidden banner.
+        // The storefront must not even confirm it exists — same lookup the list uses, one status.
+        Product? product = await products.FindBySlugAsync(slug, ProductStatusFilter.Active, cancellationToken);
 
         return product ?? throw new NotFoundException("product", slug);
     }

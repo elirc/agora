@@ -41,6 +41,20 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 
         builder.Property(p => p.CreatedAtUtc).IsRequired();
 
+        // 📘 the optimistic-concurrency token, made real. IsConcurrencyToken() adds Version to the
+        // WHERE clause of every UPDATE EF generates for a product — so a save only succeeds if the
+        // row is still at the version we loaded. Zero rows matched → DbUpdateConcurrencyException,
+        // translated to a 409 in EfUnitOfWork. This is an EXPLICIT int we manage in the domain, not
+        // SQL Server rowversion or Postgres xmin: those are provider-native and absent on SQLite,
+        // where the test suite runs — an int behaves identically on every provider. (ADR-0005.)
+        builder.Property(p => p.Version).IsConcurrencyToken().IsRequired();
+
+        // Soft-archive state. Nullable timestamp: NULL = active, set = archived-at. The SQLite
+        // UTC-ticks converter (AgoraDbContext) already covers DateTimeOffset?, so this needs no
+        // per-provider handling. IsArchived is a computed C# property with no column — see
+        // ModelMappingTests' DeliberatelyUnmapped allowlist.
+        builder.Property(p => p.ArchivedAtUtc);
+
         builder.HasIndex(p => p.Slug).IsUnique();
         builder.HasIndex(p => p.Sku).IsUnique();
 

@@ -37,4 +37,36 @@ public class CategoryTests
         Assert.Throws<DomainRuleException>(() =>
             Category.Create(tooLong, Slug.From("kitchen-dining"), SomeInstant));
     }
+
+    [Fact]
+    public void New_category_is_born_at_version_1()
+    {
+        var category = Category.Create("Kitchen", Slug.From("kitchen-dining"), SomeInstant);
+
+        Assert.Equal(1, category.Version);
+    }
+
+    [Fact]
+    public void Rename_changes_the_name_and_bumps_the_version_but_not_the_slug()
+    {
+        var category = Category.Create("Kitchen", Slug.From("kitchen-dining"), SomeInstant);
+        Slug originalSlug = category.Slug;
+
+        category.Rename("  Kitchen & Dining  ");
+
+        Assert.Equal("Kitchen & Dining", category.Name);
+        Assert.Equal(originalSlug, category.Slug); // slug is a permalink — immutable
+        Assert.Equal(2, category.Version);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Rename_rejects_a_blank_name(string? name)
+    {
+        var category = Category.Create("Kitchen", Slug.From("kitchen-dining"), SomeInstant);
+
+        Assert.Throws<DomainRuleException>(() => category.Rename(name));
+    }
 }

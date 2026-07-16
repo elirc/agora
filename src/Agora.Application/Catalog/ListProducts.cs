@@ -30,8 +30,10 @@ public sealed class ListProducts(IProductRepository products)
         Slug? categorySlug = string.IsNullOrWhiteSpace(category) ? null : Slug.From(category);
         TimelineCursor? after = cursor is null ? null : TimelineCursor.Decode(cursor);
 
-        IReadOnlyList<Product> fetched =
-            await products.ListAfterAsync(categorySlug, after, pageSize + 1, cancellationToken);
+        // ⚠️ the storefront sees ACTIVE products only — archived rows still exist in the database
+        // (for the admin, for past orders) but a shopper never learns they were ever here.
+        IReadOnlyList<Product> fetched = await products.ListAfterAsync(
+            categorySlug, ProductStatusFilter.Active, after, pageSize + 1, cancellationToken);
 
         bool hasMore = fetched.Count > pageSize;
         IReadOnlyList<Product> items = hasMore ? [.. fetched.Take(pageSize)] : fetched;

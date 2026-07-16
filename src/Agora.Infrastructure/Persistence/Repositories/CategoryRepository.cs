@@ -33,4 +33,11 @@ internal sealed class CategoryRepository(AgoraDbContext db) : ICategoryRepositor
     public Task<Category?> FindBySlugAsync(Slug slug, CancellationToken cancellationToken) =>
         db.Categories.AsNoTracking()
             .SingleOrDefaultAsync(c => c.Slug == slug, cancellationToken);
+
+    // Tracked (no AsNoTracking): a rename mutates and commits this entity, and its Version is the
+    // concurrency token EF checks at SaveChanges.
+    public Task<Category?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Categories.SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+    public void Add(Category category) => db.Categories.Add(category);
 }

@@ -33,6 +33,10 @@ internal sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
 
         builder.Property(c => c.CreatedAtUtc).IsRequired();
 
+        // The same explicit-int concurrency token Product carries — see ProductConfiguration and
+        // ADR-0005. A category rename is rare, but the token costs one column and one line.
+        builder.Property(c => c.Version).IsConcurrencyToken().IsRequired();
+
         // WHY: the newest-first cursor walk (ADR 0002) orders by (CreatedAtUtc, Id) — this
         // index IS that query. Pagination without its index is a slow table scan wearing a
         // fast API.

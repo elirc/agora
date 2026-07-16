@@ -2,8 +2,8 @@ namespace Agora.Domain.Catalog;
 
 /// <summary>
 /// Something a shopper can buy. Belongs to exactly one <see cref="Category"/>. Seed-only
-/// and read-only through the API in Sprint 01; admin CRUD and optimistic concurrency
-/// arrive in Sprint 03, real pricing in Sprint 04.
+/// and read-only through the API in Sprint 01; admin CRUD, soft-archive, and optimistic
+/// concurrency arrive in Sprint 03, real pricing in Sprint 04.
 /// </summary>
 public sealed class Product
 {
@@ -11,10 +11,10 @@ public sealed class Product
     public const int MaxDescriptionLength = 4000;
 
     public Guid Id { get; }
-    public Guid CategoryId { get; }
+    public Guid CategoryId { get; private set; }
     public string Name { get; private set; }
-    public Slug Slug { get; private set; }
-    public Sku Sku { get; private set; }
+    public Slug Slug { get; }
+    public Sku Sku { get; }
     public string Description { get; private set; }
 
     // TRY: PriceAmount + PriceCurrency are a decimal and a string — a Money value object
@@ -28,6 +28,30 @@ public sealed class Product
     public string PriceCurrency { get; private set; }
 
     public DateTimeOffset CreatedAtUtc { get; }
+
+    // 📘 THE LOST-UPDATE GUARD. `Version` is a code-managed optimistic-concurrency token: it is 1
+    // when the product is born and increments on EVERY mutation below. The client that loaded v3
+    // sends v3 back with its edit; if the row is already at v4 (another admin saved first), the
+    // write is REJECTED (409) instead of silently clobbering the newer data. Last-write-wins would
+    // accept it and the other admin's change would vanish with no error, no log, no trace — the
+    // worst kind of data loss because nobody knows it happened. One int is the whole defense.
+    // WHY an explicit int and not SQL Server rowversion / Postgres xmin: those are provider-native
+    // and do not exist on the SQLite the test suite runs on — the concurrency story would be
+    // untested exactly where it matters. An int we increment ourselves behaves IDENTICALLY on every
+    // provider and is mapped as EF's concurrency token (IsConcurrencyToken) so the database still
+    // enforces it in the UPDATE's WHERE clause. Same mechanics everywhere. (ADR-0005.)
+    public int Version { get; private set; }
+
+    // ⚠️ soft-archive: a product leaves the STOREFRONT without leaving the DATABASE. Archived is a
+    // STATE (this timestamp), never a DELETE — the row keeps its history, its slug, and its SKU, so
+    // past orders still resolve it and its identifiers stay reserved. Every catalog query must now
+    // DECLARE whether it wants archived rows (see IProductRepository / ProductStatusFilter): the
+    // storefront asks for active only, the admin list asks for all. There is no ambient default.
+    public DateTimeOffset? ArchivedAtUtc { get; private set; }
+
+    // Computed, not stored — deliberately UNMAPPED (see ModelMappingTests' allowlist). The single
+    // source of truth is ArchivedAtUtc; a stored bool alongside it could disagree with the timestamp.
+    public bool IsArchived => ArchivedAtUtc is not null;
 
     private Product(
         Guid id,
@@ -49,6 +73,7 @@ public sealed class Product
         PriceAmount = priceAmount;
         PriceCurrency = priceCurrency;
         CreatedAtUtc = createdAtUtc;
+        Version = 1;
     }
 
     public static Product Create(
@@ -76,6 +101,65 @@ public sealed class Product
             ValidPrice(priceAmount),
             ValidCurrency(priceCurrency),
             createdAtUtc);
+    }
+
+    /// <summary>
+    /// Edit the mutable facts of a product: which category it sits in, its name, description, and
+    /// price. The <see cref="Slug"/> and <see cref="Sku"/> are deliberately NOT parameters.
+    /// </summary>
+    // WHY the slug and SKU never move: both are IDENTIFIERS, not attributes. The slug is a permalink
+    // — external links, bookmarks, and search results point at /products/{slug}, and a rename that
+    // re-slugged would 404 every one of them. The SKU is what a warehouse picks by; reprinting labels
+    // because a title changed is not a thing. Names describe; identifiers endure. Renaming to a fresh
+    // slug is a create-plus-redirect operation, not an edit — out of scope here, and recorded in
+    // ADR-0005. Every edit bumps Version, so a stale editor's save is caught.
+    public void UpdateDetails(
+        Guid categoryId,
+        string? name,
+        string? description,
+        decimal priceAmount,
+        string? priceCurrency)
+    {
+        if (categoryId == Guid.Empty)
+        {
+            throw new DomainRuleException("A product must belong to a category.");
+        }
+
+        CategoryId = categoryId;
+        Name = ValidName(name);
+        Description = ValidDescription(description);
+        PriceAmount = ValidPrice(priceAmount);
+        PriceCurrency = ValidCurrency(priceCurrency);
+        Version++;
+    }
+
+    /// <summary>Remove the product from the storefront while keeping the row and its history.</summary>
+    // LEARN: archiving is a state transition with a guard, not an idempotent toggle. Archiving an
+    // already-archived product is a 422 (the admin's view was stale) rather than a silent no-op —
+    // and because it would otherwise bump Version for no real change, the guard keeps the token
+    // honest. The concurrency check upstream will usually catch the stale view first; this is the
+    // domain saying no even if it doesn't.
+    public void Archive(DateTimeOffset nowUtc)
+    {
+        if (IsArchived)
+        {
+            throw new DomainRuleException("Product is already archived.");
+        }
+
+        ArchivedAtUtc = nowUtc;
+        Version++;
+    }
+
+    /// <summary>Return an archived product to the storefront.</summary>
+    public void Restore()
+    {
+        if (!IsArchived)
+        {
+            throw new DomainRuleException("Product is not archived.");
+        }
+
+        ArchivedAtUtc = null;
+        Version++;
     }
 
     private static string ValidName(string? name)

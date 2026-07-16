@@ -30,6 +30,17 @@ public static class ServiceRegistration
         builder.Services.AddScoped<GetCategory>();
         builder.Services.AddScoped<ListProducts>();
         builder.Services.AddScoped<GetProduct>();
+
+        // S03 — admin catalog CRUD (StoreAdmin-gated inside each use case).
+        builder.Services.AddScoped<CreateCategory>();
+        builder.Services.AddScoped<UpdateCategory>();
+        builder.Services.AddScoped<ListAdminProducts>();
+        builder.Services.AddScoped<GetAdminProduct>();
+        builder.Services.AddScoped<CreateProduct>();
+        builder.Services.AddScoped<UpdateProduct>();
+        builder.Services.AddScoped<ArchiveProduct>();
+        builder.Services.AddScoped<RestoreProduct>();
+
         builder.Services.AddScoped<RegisterCustomer>();
         builder.Services.AddScoped<Login>();
         builder.Services.AddScoped<Logout>();

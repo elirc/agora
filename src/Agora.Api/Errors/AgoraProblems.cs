@@ -15,4 +15,8 @@ public static class AgoraProblems
     // S02: identity. 401 = we don't know who you are; 403 = we do, and you still may not.
     public const string Unauthenticated = Base + "unauthenticated";
     public const string Forbidden = Base + "forbidden";
+
+    // S03: optimistic concurrency. 409 = your write is well-formed and allowed, but the row changed
+    // under you. The response body carries the current server state so the client can rebase.
+    public const string Conflict = Base + "conflict";
 }
