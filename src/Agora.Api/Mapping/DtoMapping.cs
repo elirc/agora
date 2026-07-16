@@ -23,4 +23,24 @@ internal static class DtoMapping
             product.PriceAmount,
             product.PriceCurrency,
             product.CreatedAtUtc);
+
+    // The admin projections carry Version and archive state; the storefront ones deliberately do
+    // not. Same entity, a different edge for a different audience.
+    public static AdminCategoryDto ToAdminDto(this Category category) =>
+        new(category.Id, category.Name, category.Slug.Value, category.Version, category.CreatedAtUtc);
+
+    public static AdminProductDto ToAdminDto(this Product product) =>
+        new(
+            product.Id,
+            product.CategoryId,
+            product.Name,
+            product.Slug.Value,
+            product.Sku.Value,
+            product.Description,
+            product.PriceAmount,
+            product.PriceCurrency,
+            product.Version,
+            product.IsArchived,
+            product.ArchivedAtUtc,
+            product.CreatedAtUtc);
 }
