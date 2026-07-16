@@ -97,15 +97,24 @@ public sealed class SaleCampaign
     // in the data, not in the server's locale. Now find every place an instant enters this pipeline
     // (there are exactly two: ProductPricing's clock, and the repository's `asOf` filter) and satisfy
     // yourself that each one names it out loud.
+    //
+    // ⚠️ THERE WAS A THIRD, AND IT LIVED RIGHT HERE. Until S06 this type also offered a convenience
+    // overload — `IsActive()`, no arguments — that read `DateTime.Now` and compared it to
+    // `Window.Starts.DateTime`. Two mistakes in one line: it fetched an instant nobody had asked it
+    // to fetch, and it compared it against a wall-clock reading with the offset stripped off, which
+    // is a number that means "nine o'clock somewhere unstated" and cannot be compared to anything.
+    //
+    // It survived review because it was CONVENIENT and it looked like a shorthand for the line above
+    // it. It shipped a flash sale whose badge appeared nine hours late while the price was already
+    // discounted — one page, two answers, because the price came from this method's honest sibling
+    // and the badge came from the convenience.
+    //
+    // The deletion is the whole fix. Nothing replaced it, because the question it answered was
+    // already answered better one layer down: by the time a caller holds an EffectivePrice, the
+    // resolver has ALREADY filtered on IsActiveAt(asOf), so "is there a campaign here?" and "is a
+    // campaign running?" are the same question. The convenience was not a shortcut to the answer; it
+    // was a second, worse way of computing something we already knew. See ADR-0008.
     public bool IsActiveAt(DateTimeOffset instant) => Window.Contains(instant);
-
-    /// <summary>Whether this campaign is running as of now.</summary>
-    public bool IsActive()
-    {
-        DateTime now = DateTime.Now;
-
-        return now >= Window.Starts.DateTime && now < Window.Ends.DateTime;
-    }
 
     /// <summary>Whether the campaign was already over by <paramref name="instant"/>.</summary>
     public bool HasEndedBy(DateTimeOffset instant) => instant >= Window.Ends;

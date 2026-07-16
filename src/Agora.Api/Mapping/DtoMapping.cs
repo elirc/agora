@@ -37,7 +37,13 @@ internal static class DtoMapping
             price.ListPrice.Amount,
             price.ListPrice.Currency.Code,
             price.Amount.Amount,
-            campaign is not null && campaign.IsActive(),
+            // 🔗 "Is it on sale?" is `campaign is not null`, full stop — and the fact that this reads
+            // as *too simple* is the lesson. PriceResolver only hands back a campaign it already
+            // filtered with IsActiveAt(asOf), so a campaign being here IS the campaign running, as of
+            // the same instant that produced the price on the line above. Asking a second time — with
+            // a second clock — is what made the badge and the price disagree in the first place. The
+            // fix for a duplicated question is not a better duplicate; it is trusting the answer.
+            campaign is not null,
             price.SavedPercent,
             campaign is null
                 ? null
