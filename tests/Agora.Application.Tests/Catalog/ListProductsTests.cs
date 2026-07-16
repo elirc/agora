@@ -1,6 +1,7 @@
 using Agora.Application.Catalog;
 using Agora.Application.Errors;
 using Agora.Application.Pagination;
+using Agora.Application.Pricing;
 using Agora.Application.Tests.Fakes;
 using Agora.Domain;
 using Agora.Domain.Catalog;
@@ -21,30 +22,35 @@ public class ListProductsTests
     private static readonly Product O1 =
         CatalogFixtures.ProductAt(Office.Id, "Riser", "riser", "AGA-O-1", 4);
 
+    // The storefront list now resolves prices, so it needs the pricing query — which needs the
+    // campaigns port and a FROZEN clock. No campaigns here: these tests are about the cursor walk and
+    // the category filter, and pricing has its own file (ListProductsPricingTests).
     private static ListProducts UseCase() =>
-        new(new InMemoryProductRepository([K1, K2, K3, O1], [Kitchen, Office]));
+        new(
+            new InMemoryProductRepository([K1, K2, K3, O1], [Kitchen, Office]),
+            new ProductPricing(new InMemorySaleCampaignRepository(), new FixedClock(CatalogFixtures.Base)));
 
     [Fact]
     public async Task Returns_all_products_newest_first()
     {
-        Page<Product> page = await UseCase().ExecuteAsync(null, null, null, default);
+        Page<PricedProduct> page = await UseCase().ExecuteAsync(null, null, null, default);
 
-        Assert.Equal(["riser", "plates", "board", "skillet"], page.Items.Select(p => p.Slug.Value));
+        Assert.Equal(["riser", "plates", "board", "skillet"], page.Items.Select(p => p.Product.Slug.Value));
     }
 
     [Fact]
     public async Task Filters_to_one_category_by_slug()
     {
-        Page<Product> page = await UseCase().ExecuteAsync("kitchen", null, null, default);
+        Page<PricedProduct> page = await UseCase().ExecuteAsync("kitchen", null, null, default);
 
-        Assert.Equal(["plates", "board", "skillet"], page.Items.Select(p => p.Slug.Value));
-        Assert.DoesNotContain(page.Items, p => p.Slug.Value == "riser");
+        Assert.Equal(["plates", "board", "skillet"], page.Items.Select(p => p.Product.Slug.Value));
+        Assert.DoesNotContain(page.Items, p => p.Product.Slug.Value == "riser");
     }
 
     [Fact]
     public async Task Unknown_but_valid_category_yields_an_empty_page()
     {
-        Page<Product> page = await UseCase().ExecuteAsync("garden", null, null, default);
+        Page<PricedProduct> page = await UseCase().ExecuteAsync("garden", null, null, default);
 
         Assert.Empty(page.Items);
         Assert.Null(page.NextCursor);
@@ -64,12 +70,12 @@ public class ListProductsTests
     {
         ListProducts useCase = UseCase();
 
-        Page<Product> first = await useCase.ExecuteAsync(null, null, limit: 2, default);
-        Assert.Equal(["riser", "plates"], first.Items.Select(p => p.Slug.Value));
+        Page<PricedProduct> first = await useCase.ExecuteAsync(null, null, limit: 2, default);
+        Assert.Equal(["riser", "plates"], first.Items.Select(p => p.Product.Slug.Value));
         Assert.NotNull(first.NextCursor);
 
-        Page<Product> second = await useCase.ExecuteAsync(null, first.NextCursor, limit: 2, default);
-        Assert.Equal(["board", "skillet"], second.Items.Select(p => p.Slug.Value));
+        Page<PricedProduct> second = await useCase.ExecuteAsync(null, first.NextCursor, limit: 2, default);
+        Assert.Equal(["board", "skillet"], second.Items.Select(p => p.Product.Slug.Value));
         Assert.Null(second.NextCursor);
     }
 

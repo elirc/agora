@@ -4,6 +4,7 @@ using Agora.Application.Tests.Fakes;
 using Agora.Domain;
 using Agora.Domain.Access;
 using Agora.Domain.Catalog;
+using Agora.Domain.Values;
 
 namespace Agora.Application.Tests.Catalog;
 
@@ -31,7 +32,7 @@ public class UpdateProductTests
 
         Assert.Equal("New Name", updated.Name);
         Assert.Equal(Office.Id, updated.CategoryId);
-        Assert.Equal(42.00m, updated.PriceAmount);
+        Assert.Equal(Money.Of(42.00m, CurrencyCode.Usd), updated.Price);
         Assert.Equal(2, updated.Version);
     }
 
@@ -41,7 +42,7 @@ public class UpdateProductTests
         (UpdateProduct useCase, Product product) = Build();
 
         // Simulate another admin having already saved: the row is now at version 2.
-        product.UpdateDetails(Kitchen.Id, "Someone Elses Edit", "their copy", 99m, "USD");
+        product.UpdateDetails(Kitchen.Id, "Someone Elses Edit", "their copy", Money.Of(99m, CurrencyCode.Usd));
         Assert.Equal(2, product.Version);
 
         // Our admin still presents the version they loaded (1) → conflict, not a silent overwrite.
