@@ -1,0 +1,74 @@
+# Agora — auth: register / login / me / logout (Sprint 02)
+# Run against: dotnet run --project src/Agora.Api  (defaults to http://localhost:5158)
+# Seed the accounts first:  dotnet run --project src/Agora.Api -- migrate seed
+#
+# GOTCHA: these requests rely on the session COOKIE. The VS Code REST Client and JetBrains HTTP
+# client both keep a cookie jar per file, so once you register or log in, `agora_session` rides
+# along automatically on the /me and /logout calls below — you do NOT paste a token anywhere. That
+# is the whole point of cookie sessions: the token is HttpOnly and never appears in a response body.
+
+@host = http://localhost:5158
+
+### Register a new shopper → 201, Set-Cookie: agora_session=... (HttpOnly; Secure; SameSite=Lax)
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{ "email": "new.shopper@example.com", "password": "a-long-enough-password" }
+
+### Too-short password → 422 problem+json (domain-rule-violated); the server decides, always
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{ "email": "shorty@example.com", "password": "short" }
+
+### Duplicate email (any case) → 422 problem+json
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{ "email": "NEW.SHOPPER@example.com", "password": "another-good-password" }
+
+### Who am I? Uses the cookie set above → 200 MeDto { id, email, role }
+GET {{host}}/api/v1/auth/me
+
+### Log in as the seeded STORE ADMIN (dev credentials — see AgoraSeeder) → 200 + fresh cookie
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "admin@agora.test", "password": "admin-password-dev" }
+
+### Log in as the seeded OPS user → 200 + fresh cookie
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "ops@agora.test", "password": "ops-password-dev" }
+
+### Log in as the seeded demo CUSTOMER → 200 + fresh cookie
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "shopper@agora.test", "password": "shopper-password-dev" }
+
+### Wrong credentials → 401 problem+json. Wrong password and unknown email are BYTE-IDENTICAL
+### (user-enumeration defense) — compare this body with the next one.
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "shopper@agora.test", "password": "not-the-right-password" }
+
+### Unknown email → the same uniform 401 as a wrong password
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "ghost@example.com", "password": "whatever-here" }
+
+### Anonymous access to a protected endpoint → 401 (no cookie). NOTE: no WWW-Authenticate header —
+### a cookie session is not an HTTP auth scheme; the SPA redirects to /login instead. (ADR-0004)
+# Clear your client's cookie jar, or run this in a fresh file, to see the anonymous case.
+GET {{host}}/api/v1/auth/me
+
+### Log out → 204; the response clears the cookie, and the session is revoked server-side. Requires
+### a session (anonymous logout → 401). Logging out twice is a safe no-op.
+POST {{host}}/api/v1/auth/logout
+
+### Catalog stays PUBLIC — no cookie needed (contrast with /me above)
+GET {{host}}/api/v1/products?limit=5
