@@ -29,6 +29,7 @@ public class AuthorizationMatrixTests : IClassFixture<AgoraApiFactory>, IAsyncLi
     private string _admin = null!;
     private string _ops = null!;
     private Guid _categoryId;
+    private Guid _cartProductId;
 
     public AuthorizationMatrixTests(AgoraApiFactory factory) => _factory = factory;
 
@@ -44,6 +45,11 @@ public class AuthorizationMatrixTests : IClassFixture<AgoraApiFactory>, IAsyncLi
         List<CategoryDto> categories =
             (await _factory.NewClient().GetFromJsonAsync<List<CategoryDto>>("/api/v1/categories"))!;
         _categoryId = categories[0].Id;
+
+        // …and a real product for the cart rows to add.
+        List<ProductDto> products =
+            (await _factory.NewClient().GetFromJsonAsync<List<ProductDto>>("/api/v1/products"))!;
+        _cartProductId = products[0].Id;
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -284,6 +290,79 @@ public class AuthorizationMatrixTests : IClassFixture<AgoraApiFactory>, IAsyncLi
 
         Assert.Equal(expected,
             (await As(persona).PostAsync($"/api/v1/admin/campaigns/{campaign.Id}/end", null)).StatusCode);
+    }
+
+    // ── The cart (S05): the first rows where EVERY persona gets a 2xx ────────────────────────────
+    //
+    // 🔍 and that is the point worth stopping on, because a table of nothing but 200s looks like an
+    // authorization gap. It isn't — it is a DIFFERENT AXIS. Every row above asks "who are you?", and
+    // /admin answers with a 403 for the wrong answer. The cart never asks: a shopper with no account
+    // has one, and so does the Ops user, because Ops is also a person who might buy a skillet. Roles
+    // are capabilities, and "hold a shopping list" is not one anybody has to be granted.
+    //
+    // The cart's boundary is OWNERSHIP, so its deny case is on the other axis, and it is the last two
+    // rows in this file: a cart-line id belonging to somebody else is a 404, for everyone. Not a 403
+    // — a 403 confirms the line exists, which turns id-guessing into an oracle for the shape of other
+    // people's carts. Same answer for a stranger's line, a typo, and a caller with no cart at all:
+    // there is exactly one thing to learn from these endpoints, and it is nothing.
+    //
+    // ⚠️ S13 audits this table for gaps. The gap it will be looking for is a by-id read whose deny row
+    // is missing — so note that the rows below exist BECAUSE these endpoints take an id off the URL,
+    // not because a role was involved.
+
+    [Theory]
+    [MemberData(nameof(AllPersonas))]
+    public async Task Cart_reads_are_open_to_everyone_including_anonymous(string? persona)
+    {
+        Assert.Equal(HttpStatusCode.OK, (await As(persona).GetAsync("/api/v1/cart")).StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllPersonas))]
+    public async Task Cart_writes_are_open_to_everyone_including_anonymous(string? persona)
+    {
+        // The POST is also what mints an anonymous shopper's cart cookie, so from here on this
+        // persona carries whichever cookies they actually have: a session, a cart token, or both.
+        HttpResponseMessage added = await As(persona)
+            .PostAsJsonAsync("/api/v1/cart/lines", new AddCartLineRequest(_cartProductId, 1));
+
+        Assert.Equal(HttpStatusCode.OK, added.StatusCode);
+
+        CartDto cart = (await added.Content.ReadFromJsonAsync<CartDto>())!;
+        HttpClient shopper = _factory.AsShopper(TokenFor(persona), CartHelpers.CartTokenFrom(added));
+
+        Assert.Equal(HttpStatusCode.OK, (await shopper.PatchAsJsonAsync(
+            $"/api/v1/cart/lines/{cart.Lines[0].Id}",
+            new UpdateCartLineQuantityRequest(2))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK,
+            (await shopper.DeleteAsync($"/api/v1/cart/lines/{cart.Lines[0].Id}")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await shopper.DeleteAsync("/api/v1/cart")).StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllPersonas))]
+    public async Task Another_shoppers_cart_line_is_404_for_every_persona(string? persona)
+    {
+        Guid strangersLine = await StrangersCartLineAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, (await As(persona).PatchAsJsonAsync(
+            $"/api/v1/cart/lines/{strangersLine}",
+            new UpdateCartLineQuantityRequest(99))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await As(persona).DeleteAsync($"/api/v1/cart/lines/{strangersLine}")).StatusCode);
+    }
+
+    /// <summary>A line in a cart nobody in this test holds the token for.</summary>
+    private async Task<Guid> StrangersCartLineAsync()
+    {
+        HttpResponseMessage added = await _factory.NewClient()
+            .PostAsJsonAsync("/api/v1/cart/lines", new AddCartLineRequest(_cartProductId, 4));
+        added.EnsureSuccessStatusCode();
+
+        return (await added.Content.ReadFromJsonAsync<CartDto>())!.Lines[0].Id;
     }
 
     private CreateProductRequest NewProductRequest() => new(

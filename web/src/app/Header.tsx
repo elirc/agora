@@ -1,15 +1,26 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useCurrentUser } from '../features/auth/queries';
 import { useLogout } from '../features/auth/mutations';
+import { cartItemCount, useCart } from '../features/cart/queries';
 
 // 🔗 the header reflects auth state, but showing/hiding a link is UX only — the server is the
 // authority (see RequireAuth). Anonymous shoppers see Sign in / Register; signed-in users see
 // their email (a link to the account page) and Sign out. It reads `useCurrentUser`, the same
 // cached user every other component reads, so login/logout updates the header with no prop-drilling.
-export function Header() {
+//
+// 📘 AND FROM S05 IT READS THE CART THE SAME WAY — which is what makes the merge VISIBLE. Sign in
+// with two skillets in an anonymous cart and this badge changes on its own, because `useLogin`
+// invalidates the cart key and this component is already subscribed to it. Nobody passes the new
+// count anywhere; nobody tells the header that a merge happened. Server state in one cache, read by
+// whoever needs it, is why a feature living in `features/auth` can correctly change a number in
+// `app/Header` without either file importing the other.
+export function Header({ onOpenCart }: { onOpenCart: () => void }) {
   const { data: user } = useCurrentUser();
+  const { data: cart } = useCart();
   const logout = useLogout();
   const navigate = useNavigate();
+
+  const itemCount = cartItemCount(cart);
 
   return (
     <header className="border-b border-neutral-200">
@@ -54,6 +65,30 @@ export function Header() {
               </Link>
             </>
           )}
+
+          {/* ⚠️ THE CART BUTTON IS OUTSIDE THE `user` TERNARY, and that placement is the sprint's
+              thesis expressed in JSX. A shopper with no account has a cart. Putting this inside the
+              signed-in branch would be the UI asserting that a cart requires an identity — which is
+              the exact assumption the anonymous cart cookie exists to refute, and the exact
+              assumption that turns "add to cart" into a login wall. */}
+          <button
+            type="button"
+            onClick={onOpenCart}
+            className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-neutral-800 hover:border-neutral-500"
+          >
+            Cart
+            {itemCount > 0 && (
+              // The count goes in the accessible name too — a bare number beside the word "Cart"
+              // reads as "Cart 3" to a screen reader, which happens to be fine here and would not be
+              // if the badge ever meant something else.
+              <span
+                aria-label={`${itemCount} item${itemCount === 1 ? '' : 's'} in cart`}
+                className="rounded-full bg-neutral-900 px-1.5 text-xs font-medium tabular-nums text-white"
+              >
+                {itemCount}
+              </span>
+            )}
+          </button>
         </div>
       </nav>
     </header>

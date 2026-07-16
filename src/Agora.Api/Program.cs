@@ -29,6 +29,11 @@ api.MapCategories();
 api.MapProducts();
 api.MapAuth();
 
+// S05 — the cart. Deliberately NOT under /admin and deliberately not behind RequireUser: a shopper
+// with no account can hold a cart, identified by an unprivileged agora_cart cookie. Signing in
+// merges that cart into the owned one (see MapAuth above) — the cart survives becoming someone.
+api.MapCart();
+
 // S03 — the Store Admin back-office. Every route under /admin is StoreAdmin-only (the guard lives
 // in each use case's RequireRole, enumerated in AuthorizationMatrixTests). This is Agora's FIRST
 // set of 403s: catalog reads stay public, but writing the catalog is a privileged act.

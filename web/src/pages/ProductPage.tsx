@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
+import { AddToCartButton } from '../features/cart/components/AddToCartButton';
 import { PriceDisplay } from '../features/catalog/components/PriceDisplay';
 import { formatSaleEnds } from '../features/catalog/format';
 import { useProduct } from '../features/catalog/queries';
@@ -63,7 +64,14 @@ export function ProductPage() {
         </p>
       )}
 
-      <p className="mt-4 whitespace-pre-line text-neutral-700">{product.description}</p>
+      {/* S05: the buy action, right under the price. The button is narrow on purpose — a
+          full-width primary button belongs in the constrained space of a card, not across a
+          three-column reading measure. */}
+      <div className="mt-4 max-w-xs">
+        <AddToCartButton product={product} />
+      </div>
+
+      <p className="mt-6 whitespace-pre-line text-neutral-700">{product.description}</p>
       <p className="mt-6 text-xs uppercase tracking-wide text-neutral-400">SKU {product.sku}</p>
     </main>
   );
