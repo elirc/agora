@@ -43,4 +43,37 @@ public class SlugTests
     {
         Assert.Equal(Slug.From("kitchen-dining"), Slug.From("  Kitchen-Dining "));
     }
+
+    [Theory]
+    [InlineData("Kitchen & Dining", "kitchen-dining")]
+    [InlineData("  Trail   Running  Shoes ", "trail-running-shoes")]
+    [InlineData("Standing Desk Converter", "standing-desk-converter")]
+    [InlineData("AGA-KIT-014", "aga-kit-014")]
+    [InlineData("Waffle-Weave Bath Towel!", "waffle-weave-bath-towel")]
+    [InlineData("café noir", "caf-noir")] // non-ASCII letters drop out; the rest still slugs
+    public void Generate_slugifies_human_text(string text, string expected)
+    {
+        Assert.Equal(expected, Slug.Generate(text).Value);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("!!!")]        // no slug-able characters
+    [InlineData("—— ——")]     // punctuation and spaces only
+    public void Generate_rejects_text_with_no_slug_able_characters(string? text)
+    {
+        Assert.Throws<DomainRuleException>(() => Slug.Generate(text));
+    }
+
+    [Fact]
+    public void Generate_still_enforces_the_length_limit()
+    {
+        string tooLong = new('a', Slug.MaxLength + 1);
+
+        // Generation is a convenience, not an escape hatch — it re-enters through From, so an
+        // over-long result is rejected, not silently truncated.
+        Assert.Throws<DomainRuleException>(() => Slug.Generate(tooLong));
+    }
 }
