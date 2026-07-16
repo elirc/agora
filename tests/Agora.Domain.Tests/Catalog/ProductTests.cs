@@ -1,5 +1,6 @@
 using Agora.Domain;
 using Agora.Domain.Catalog;
+using Agora.Domain.Values;
 
 namespace Agora.Domain.Tests.Catalog;
 
@@ -21,8 +22,7 @@ public class ProductTests
             Slug.From("cast-iron-skillet"),
             Sku.From("AGA-KIT-002"),
             description,
-            price,
-            currency,
+            Money.Of(price, currency),
             SomeInstant);
 
     [Fact]
@@ -34,8 +34,7 @@ public class ProductTests
             Slug.From("cast-iron-skillet"),
             Sku.From("aga-kit-002"),
             "  Pre-seasoned.  ",
-            34.50m,
-            "USD",
+            Money.Of(34.50m, CurrencyCode.Usd),
             SomeInstant);
 
         Assert.Equal(SomeCategory, product.CategoryId);
@@ -43,8 +42,7 @@ public class ProductTests
         Assert.Equal("cast-iron-skillet", product.Slug.Value);
         Assert.Equal("AGA-KIT-002", product.Sku.Value);
         Assert.Equal("Pre-seasoned.", product.Description);
-        Assert.Equal(34.50m, product.PriceAmount);
-        Assert.Equal("USD", product.PriceCurrency);
+        Assert.Equal(Money.Of(34.50m, CurrencyCode.Usd), product.Price);
         Assert.Equal(SomeInstant, product.CreatedAtUtc);
     }
 
@@ -57,8 +55,7 @@ public class ProductTests
             Slug.From("cast-iron-skillet"),
             Sku.From("AGA-KIT-002"),
             "desc",
-            34.50m,
-            "USD",
+            Money.Of(34.50m, CurrencyCode.Usd),
             SomeInstant));
     }
 
@@ -82,17 +79,34 @@ public class ProductTests
     {
         Product product = Make(price: 0m);
 
-        Assert.Equal(0m, product.PriceAmount);
+        Assert.True(product.Price.IsZero);
     }
 
+    // 📘 S04: the currency invariant MOVED. It used to live in Product.ValidCurrency; it now lives in
+    // CurrencyCode.From, so a nonsense currency can no longer reach a Product — there is no Money to
+    // build one out of. Same rule, one place, and every future entity that holds money inherits it
+    // rather than copying a three-line check.
     [Theory]
     [InlineData(null)]
+    [InlineData("")]
     [InlineData("US")]
-    [InlineData("usd")]
     [InlineData("DOLLAR")]
-    public void Create_rejects_non_iso_currency(string? currency)
+    [InlineData("US$")]
+    public void A_product_cannot_be_priced_in_a_non_iso_currency(string? currency)
     {
         Assert.Throws<DomainRuleException>(() => Make(currency: currency));
+    }
+
+    // 🔍 AND ONE RULE CHANGED ON THE WAY, so here it is in a test rather than in a surprise. S03's
+    // check rejected "usd" outright; CurrencyCode NORMALIZES case at the door and accepts it, exactly
+    // as Slug and Sku already did with their inputs. That is the more consistent behaviour — "usd"
+    // and "USD" were never two currencies, and rejecting one of them was a shape complaint dressed up
+    // as a business rule. Nothing else about the boundary got looser: "DOLLAR" and "US$" are still
+    // refused above. (ADR-0006.)
+    [Fact]
+    public void A_currency_typed_in_lower_case_is_normalised_not_rejected()
+    {
+        Assert.Equal(CurrencyCode.Usd, Make(currency: "usd").Price.Currency);
     }
 
     // ── Version + mutation (S03) ─────────────────────────────────────────────────────────────
@@ -113,12 +127,12 @@ public class ProductTests
         Product product = Make();
         Guid newCategory = Guid.NewGuid();
 
-        product.UpdateDetails(newCategory, "  Renamed Skillet  ", "  New copy.  ", 40.00m, "usd".ToUpperInvariant());
+        product.UpdateDetails(newCategory, "  Renamed Skillet  ", "  New copy.  ", Money.Of(40.00m, CurrencyCode.Usd));
 
         Assert.Equal(newCategory, product.CategoryId);
         Assert.Equal("Renamed Skillet", product.Name);
         Assert.Equal("New copy.", product.Description);
-        Assert.Equal(40.00m, product.PriceAmount);
+        Assert.Equal(Money.Of(40.00m, CurrencyCode.Usd), product.Price);
         Assert.Equal(2, product.Version);
     }
 
@@ -129,7 +143,7 @@ public class ProductTests
         Slug originalSlug = product.Slug;
         Sku originalSku = product.Sku;
 
-        product.UpdateDetails(product.CategoryId, "A Totally Different Name", "desc", 1m, "USD");
+        product.UpdateDetails(product.CategoryId, "A Totally Different Name", "desc", Money.Of(1m, CurrencyCode.Usd));
 
         // The slug is a permalink and the SKU a warehouse identity — a rename touches neither.
         Assert.Equal(originalSlug, product.Slug);
@@ -144,18 +158,18 @@ public class ProductTests
         Product product = Make();
 
         Assert.Throws<DomainRuleException>(() =>
-            product.UpdateDetails(product.CategoryId, name, "desc", 1m, "USD"));
+            product.UpdateDetails(product.CategoryId, name, "desc", Money.Of(1m, CurrencyCode.Usd)));
     }
 
     [Fact]
-    public void UpdateDetails_rejects_a_negative_price_and_bad_currency()
+    public void UpdateDetails_rejects_a_negative_price()
     {
         Product product = Make();
 
+        // Money itself permits a negative amount — a refund is negative money. "A shelf price is not
+        // negative" is the PRODUCT's rule, so it is the product that says no.
         Assert.Throws<DomainRuleException>(() =>
-            product.UpdateDetails(product.CategoryId, "Name", "desc", -1m, "USD"));
-        Assert.Throws<DomainRuleException>(() =>
-            product.UpdateDetails(product.CategoryId, "Name", "desc", 1m, "usd"));
+            product.UpdateDetails(product.CategoryId, "Name", "desc", Money.Of(-1m, CurrencyCode.Usd)));
     }
 
     [Fact]
@@ -164,7 +178,7 @@ public class ProductTests
         Product product = Make();
 
         Assert.Throws<DomainRuleException>(() =>
-            product.UpdateDetails(Guid.Empty, "Name", "desc", 1m, "USD"));
+            product.UpdateDetails(Guid.Empty, "Name", "desc", Money.Of(1m, CurrencyCode.Usd)));
     }
 
     [Fact]
