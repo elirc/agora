@@ -39,5 +39,24 @@ public interface IProductRepository
     /// <summary>Any product sharing this SKU (any archive state), for the create-time uniqueness check.</summary>
     Task<Product?> FindBySkuAsync(Sku sku, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The products for a known set of ids, in one query — the cart's read (S05). Callers pass an
+    /// explicit <paramref name="status"/> like every other list here.
+    /// </summary>
+    // ⚠️ WHY THIS EXISTS AND FindByIdAsync-IN-A-LOOP DOES NOT. A cart with ten lines needs ten
+    // products to price itself. Ten calls to FindByIdAsync is ten round trips to answer one question,
+    // and it is the textbook N+1 — the kind that is invisible in a test (the fake is a list) and
+    // invisible in dev (the database is on localhost) and is a page-load in production. S04 made the
+    // same call for campaigns (ListActiveForProductsAsync takes a set, not an id) for the same
+    // reason. The shape of the port is where an N+1 is prevented; by the time it is a query it is
+    // already S14's problem.
+    // GOTCHA: the ids are a SET, so the answer may be shorter than the question (an id that matches
+    // nothing simply is not in the result) and its order is not the caller's. Callers index by id;
+    // nobody zips these two lists together positionally.
+    Task<IReadOnlyList<Product>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        ProductStatusFilter status,
+        CancellationToken cancellationToken);
+
     void Add(Product product);
 }

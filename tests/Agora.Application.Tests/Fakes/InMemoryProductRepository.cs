@@ -63,6 +63,21 @@ public sealed class InMemoryProductRepository(
     public Task<Product?> FindBySkuAsync(Sku sku, CancellationToken cancellationToken) =>
         Task.FromResult<Product?>(_products.FirstOrDefault(p => p.Sku == sku));
 
+    // The cart's set read (S05). GOTCHA — and this is the fake earning its keep: the result is
+    // deliberately NOT in the caller's id order, and is deliberately shorter when an id matches
+    // nothing, because that is what `WHERE Id IN (…)` does. A fake that helpfully returned the ids in
+    // the order they were asked for would let a caller zip two lists together positionally and pass
+    // every test right up until production, where the database has its own opinion about row order. A
+    // fake's job is to be as unhelpful as the real thing.
+    public Task<IReadOnlyList<Product>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        ProductStatusFilter status,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Product> found = [.. ApplyStatus(_products, status).Where(p => ids.Contains(p.Id))];
+        return Task.FromResult(found);
+    }
+
     public void Add(Product product) => _products.Add(product);
 
     private static IEnumerable<Product> ApplyStatus(IEnumerable<Product> source, ProductStatusFilter status) =>

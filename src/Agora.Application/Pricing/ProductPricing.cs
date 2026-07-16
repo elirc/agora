@@ -48,9 +48,13 @@ public sealed class ProductPricing(ISaleCampaignRepository campaigns, TimeProvid
 
         ILookup<Guid, SaleCampaign> byProduct = active.ToLookup(campaign => campaign.ProductId);
 
+        // The instant rides along in every answer (S05 added `AsOf`). It costs one field and it means
+        // a caller that needs to know WHEN a price was true — a cart recording what it quoted — does
+        // not have to go and ask a clock a second time to find out.
         return [.. products.Select(product => new PricedProduct(
             product,
-            PriceResolver.Resolve(product.Price, byProduct[product.Id], asOf)))];
+            PriceResolver.Resolve(product.Price, byProduct[product.Id], asOf),
+            asOf))];
     }
 
     /// <summary>Prices a single product.</summary>
