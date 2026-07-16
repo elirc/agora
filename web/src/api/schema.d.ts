@@ -622,7 +622,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["StockDto"];
+                    };
                 };
             };
         };
@@ -662,7 +664,27 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ReservationResultDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
                 };
             };
         };
@@ -676,8 +698,8 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
-                200: {
+                /** @description No Content */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -714,7 +736,36 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["LowStockDto"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
                 };
             };
         };
@@ -1610,6 +1661,18 @@ export interface components {
             email: null | string;
             password: null | string;
         };
+        LowStockDto: {
+            /** Format: uuid */
+            productId: string;
+            name: string;
+            sku: string;
+            /** Format: int32 */
+            onHand: number | string;
+            /** Format: int32 */
+            reserved: number | string;
+            /** Format: int32 */
+            available: number | string;
+        };
         MeDto: {
             /** Format: uuid */
             id: string;
@@ -1653,6 +1716,22 @@ export interface components {
             email: null | string;
             password: null | string;
         };
+        ReservationDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantity: number | string;
+            /** Format: date-time */
+            expiresAtUtc: string;
+        };
+        ReservationResultDto: {
+            success: boolean;
+            reservation: null | components["schemas"]["ReservationDto"];
+            /** Format: int32 */
+            available: number | string;
+        };
         ReserveStockRequest: {
             /** Format: uuid */
             productId: string;
@@ -1667,6 +1746,13 @@ export interface components {
             startsAtUtc: string;
             /** Format: date-time */
             endsAtUtc: string;
+        };
+        StockDto: {
+            /** Format: int32 */
+            available: number | string;
+            inStock: boolean;
+            /** Format: date-time */
+            availableAt: string;
         };
         UpdateCartLineQuantityRequest: {
             /** Format: int32 */
