@@ -2,11 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiError,
   getAdminProduct,
   listCategories,
+  listSaleCampaigns,
   updateProduct,
   type AdminProductDto,
   type ProblemDetails,
@@ -15,12 +16,19 @@ import { AdminProductEditPage } from './AdminProductEditPage';
 
 // Mock at the API-CLIENT seam: the real page, form, mutation, and conflict logic all run; only the
 // network is faked. Same discipline as every other Agora test.
+//
+// S04 adds listSaleCampaigns to this list, because the page now hosts the sale panel. Note WHY it
+// had to be added rather than being left to fail quietly: unmocked, the panel's query hits the real
+// fetch, errors, and renders its own role="alert" — which made the conflict-banner assertions below
+// ambiguous ("found multiple elements with role alert") rather than wrong. A page that grows a data
+// dependency grows a mock; the seam is the whole page's, not one component's.
 vi.mock('../../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/client')>();
   return {
     ...actual,
     getAdminProduct: vi.fn(),
     listCategories: vi.fn(),
+    listSaleCampaigns: vi.fn(),
     updateProduct: vi.fn(),
   };
 });
@@ -56,6 +64,11 @@ function renderEdit() {
 }
 
 describe('AdminProductEditPage — the lost-update conflict UX', () => {
+  beforeEach(() => {
+    // The sale panel is a bystander in these tests — it just has to not be a source of noise.
+    vi.mocked(listSaleCampaigns).mockResolvedValue([]);
+  });
+
   afterEach(() => vi.clearAllMocks());
 
   it('shows the conflict banner with the current server state on a 409, then rebases and saves on overwrite', async () => {

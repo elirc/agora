@@ -32,6 +32,13 @@ function product(name: string, slug: string): ProductDto {
     description: `${name} description`,
     priceAmount: 19.99,
     priceCurrency: 'USD',
+    // S04: the contract grew sale fields, and TypeScript made every fixture say what it means about
+    // them. That is the generated types earning their keep — this file broke at COMPILE time the
+    // moment the server's shape moved, rather than at runtime in front of a shopper.
+    effectivePriceAmount: 19.99,
+    isOnSale: false,
+    savePercent: 0,
+    sale: null,
     createdAtUtc: '2026-07-16T10:00:00Z',
   };
 }

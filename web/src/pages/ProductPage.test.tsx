@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, getProduct } from '../api/client';
+import { ApiError, getProduct, type ProductDto } from '../api/client';
 import { ProductPage } from './ProductPage';
 
 vi.mock('../api/client', async (importOriginal) => {
@@ -50,17 +50,7 @@ describe('ProductPage', () => {
   });
 
   it('renders the product on success', async () => {
-    vi.mocked(getProduct).mockResolvedValue({
-      id: 'id-1',
-      categoryId: 'cat-1',
-      name: 'Cast Iron Skillet',
-      slug: 'cast-iron-skillet',
-      sku: 'AGA-KIT-002',
-      description: 'Pre-seasoned cast iron.',
-      priceAmount: 34.5,
-      priceCurrency: 'USD',
-      createdAtUtc: '2026-07-16T10:00:00Z',
-    });
+    vi.mocked(getProduct).mockResolvedValue(skillet());
 
     renderAt('cast-iron-skillet');
 
@@ -69,4 +59,49 @@ describe('ProductPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('$34.50')).toBeInTheDocument();
   });
+
+  it('shows the sale price and when the sale ends', async () => {
+    // S04: the page renders what the server resolved — the sale price, the struck-through list
+    // price, the badge — plus the campaign's name and end date, which is the one thing here rendered
+    // in the SHOPPER's timezone rather than the server's.
+    vi.mocked(getProduct).mockResolvedValue(
+      skillet({
+        effectivePriceAmount: 27.6,
+        isOnSale: true,
+        savePercent: 20,
+        sale: {
+          campaignId: 'c-1',
+          name: 'Cast Iron Week',
+          startsAtUtc: '2026-08-07T00:00:00Z',
+          endsAtUtc: '2026-08-10T12:00:00Z',
+        },
+      }),
+    );
+
+    renderAt('cast-iron-skillet');
+
+    expect(await screen.findByText('$27.60')).toBeInTheDocument();
+    expect(screen.getByText('$34.50')).toBeInTheDocument();
+    expect(screen.getByText('Save 20%')).toBeInTheDocument();
+    expect(screen.getByText(/Cast Iron Week · Ends /)).toBeInTheDocument();
+  });
 });
+
+function skillet(overrides: Partial<ProductDto> = {}): ProductDto {
+  return {
+    id: 'id-1',
+    categoryId: 'cat-1',
+    name: 'Cast Iron Skillet',
+    slug: 'cast-iron-skillet',
+    sku: 'AGA-KIT-002',
+    description: 'Pre-seasoned cast iron.',
+    priceAmount: 34.5,
+    priceCurrency: 'USD',
+    effectivePriceAmount: 34.5,
+    isOnSale: false,
+    savePercent: 0,
+    sale: null,
+    createdAtUtc: '2026-07-16T10:00:00Z',
+    ...overrides,
+  };
+}

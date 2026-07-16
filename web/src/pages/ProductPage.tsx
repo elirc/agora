@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
-import { formatPrice } from '../features/catalog/format';
+import { PriceDisplay } from '../features/catalog/components/PriceDisplay';
+import { formatSaleEnds } from '../features/catalog/format';
 import { useProduct } from '../features/catalog/queries';
 
 export function ProductPage() {
@@ -47,9 +48,21 @@ export function ProductPage() {
       </Link>
 
       <h1 className="mt-4 text-2xl font-semibold text-neutral-900">{product.name}</h1>
-      <p className="mt-2 text-lg text-neutral-800">
-        {formatPrice(product.priceAmount, product.priceCurrency)}
-      </p>
+
+      <div className="mt-2">
+        <PriceDisplay product={product} size="lg" />
+      </div>
+
+      {/* The sale's own metadata, which only the product page has room for. WHY show the end date at
+          all: "Save 20%" is a number; "Ends Sun, Aug 9" is a reason to decide today. The server sent
+          the instant; formatSaleEnds renders it in the SHOPPER's timezone, which is the one place in
+          this feature where a local clock is the correct answer. */}
+      {product.sale && (
+        <p className="mt-1 text-sm text-neutral-600">
+          {product.sale.name} · Ends {formatSaleEnds(product.sale.endsAtUtc)}
+        </p>
+      )}
+
       <p className="mt-4 whitespace-pre-line text-neutral-700">{product.description}</p>
       <p className="mt-6 text-xs uppercase tracking-wide text-neutral-400">SKU {product.sku}</p>
     </main>

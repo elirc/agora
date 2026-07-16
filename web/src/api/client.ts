@@ -16,6 +16,12 @@ export type CreateProductRequest = components['schemas']['CreateProductRequest']
 export type UpdateProductRequest = components['schemas']['UpdateProductRequest'];
 export type CreateCategoryRequest = components['schemas']['CreateCategoryRequest'];
 
+// S04 — pricing. SaleDto rides inside ProductDto (the shopper's view: name + window); the admin DTO
+// carries the discount mechanics and the server-resolved IsRunning flag.
+export type SaleDto = components['schemas']['SaleDto'];
+export type AdminSaleCampaignDto = components['schemas']['AdminSaleCampaignDto'];
+export type CreateSaleCampaignRequest = components['schemas']['CreateSaleCampaignRequest'];
+
 /** One page of results plus the cursor for the next one (mirrors the backend's Page<T>). */
 export interface Page<T> {
   items: T[];
@@ -227,6 +233,37 @@ export async function restoreProduct(id: string, expectedVersion: number): Promi
 export async function createCategory(body: CreateCategoryRequest): Promise<AdminCategoryDto> {
   const response = await postJson('/api/v1/admin/categories', body);
   return (await response.json()) as AdminCategoryDto;
+}
+
+// ── Admin pricing (S04) ──────────────────────────────────────────────────────────────────────
+
+export async function listSaleCampaigns(productId: string): Promise<AdminSaleCampaignDto[]> {
+  const response = await request(
+    `/api/v1/admin/products/${encodeURIComponent(productId)}/campaigns`,
+  );
+  return (await response.json()) as AdminSaleCampaignDto[];
+}
+
+export async function createSaleCampaign(
+  productId: string,
+  body: CreateSaleCampaignRequest,
+): Promise<AdminSaleCampaignDto> {
+  const response = await postJson(
+    `/api/v1/admin/products/${encodeURIComponent(productId)}/campaigns`,
+    body,
+  );
+  return (await response.json()) as AdminSaleCampaignDto;
+}
+
+// WHY ending a campaign is not nested under its product: the campaign id identifies it on its own,
+// and a URL carrying both would let a caller present a mismatched pair we would then have to reject.
+// The route mirrors the server's (see AdminPricingEndpoints).
+export async function endSaleCampaign(campaignId: string): Promise<AdminSaleCampaignDto> {
+  const response = await postJson(
+    `/api/v1/admin/campaigns/${encodeURIComponent(campaignId)}/end`,
+    {},
+  );
+  return (await response.json()) as AdminSaleCampaignDto;
 }
 
 /**
