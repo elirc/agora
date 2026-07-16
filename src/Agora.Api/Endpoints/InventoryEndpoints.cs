@@ -32,7 +32,8 @@ public static class InventoryEndpoints
             return Results.Ok(new StockDto(count, count > 0, clock.GetUtcNow()));
         })
         .WithSummary("How many of a product a shopper could claim right now.")
-        .WithTags("Catalog");
+        .WithTags("Catalog")
+        .Produces<StockDto>();
 
         // ⚠️ ANONYMOUS, LIKE THE CART IT SERVES. A shopper without an account can hold a cart (S05),
         // so a shopper without an account must be able to hold the stock that cart is for — otherwise
@@ -67,7 +68,10 @@ public static class InventoryEndpoints
                 result.Available));
         })
         .WithSummary("Hold stock for the caller's cart while they check out.")
-        .WithTags("Cart");
+        .WithTags("Cart")
+        .Produces<ReservationResultDto>()
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
 
         api.MapDelete("/cart/reservations", async (
             HttpContext http,
@@ -82,7 +86,8 @@ public static class InventoryEndpoints
             return Results.NoContent();
         })
         .WithSummary("Give back everything the caller's cart is holding.")
-        .WithTags("Cart");
+        .WithTags("Cart")
+        .Produces(StatusCodes.Status204NoContent);
 
         RouteGroupBuilder admin = api.MapGroup("/admin").WithTags("Admin inventory");
 
@@ -110,7 +115,11 @@ public static class InventoryEndpoints
                     line.Available))
                 .ToList());
         })
-        .WithSummary("Products at or below a stock threshold — the shop's own view.");
+        .WithSummary("Products at or below a stock threshold — the shop's own view.")
+        .Produces<IEnumerable<LowStockDto>>()
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status403Forbidden)
+        .ProducesProblem(StatusCodes.Status400BadRequest);
 
         return api;
     }

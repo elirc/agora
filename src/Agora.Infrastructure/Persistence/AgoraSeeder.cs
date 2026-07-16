@@ -1,7 +1,7 @@
 using Agora.Application.Abstractions;
 using Agora.Domain.Access;
-using Agora.Domain.Inventory;
 using Agora.Domain.Catalog;
+using Agora.Domain.Inventory;
 using Agora.Domain.Pricing;
 using Agora.Domain.Values;
 using Microsoft.EntityFrameworkCore;

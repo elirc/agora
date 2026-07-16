@@ -3,8 +3,8 @@ using Agora.Api.Errors;
 using Agora.Application.Abstractions;
 using Agora.Application.Auth;
 using Agora.Application.Carts;
-using Agora.Application.Inventory;
 using Agora.Application.Catalog;
+using Agora.Application.Inventory;
 using Agora.Application.Pricing;
 using Agora.Infrastructure;
 

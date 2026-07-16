@@ -1,7 +1,7 @@
 using Agora.Domain.Access;
-using Agora.Domain.Inventory;
 using Agora.Domain.Carts;
 using Agora.Domain.Catalog;
+using Agora.Domain.Inventory;
 using Agora.Domain.Pricing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
