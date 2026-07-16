@@ -181,6 +181,87 @@ public sealed class Cart
         _lines.Clear();
         Touch(nowUtc);
     }
+
+    /// <summary>
+    /// Fold <paramref name="source"/>'s lines into this cart: every product from either cart ends up
+    /// here, and a product in both keeps the larger quantity.
+    /// </summary>
+    // 📘 THE MERGE. This is the sprint's flagship and the only genuinely contested decision in it, so
+    // read it slowly. Two carts, one shopper: the one they built on this phone before signing in, and
+    // the one that has been sitting in their account since Tuesday. What comes out?
+    //
+    // The easy half is not the argument. A product in only ONE cart is in the result — nothing a
+    // shopper put in a cart may vanish because they logged in, and if you get that wrong they find
+    // out at checkout, which is the worst possible moment to discover a bug about wanting things.
+    //
+    // The argument is the COLLISION: the same product in both, 2 here and 3 there. Three answers
+    // exist and each is defensible out loud:
+    //   • SUM (5)          — both adds were deliberate; honour both.
+    //   • TAKE-MAX (3)     — the strongest intent wins; nothing inflates.
+    //   • ANONYMOUS-WINS   — the cart they were just looking at is the freshest truth.
+    // Agora takes the MAX, and ADR-0007 §Decision 3 is where that is argued in full. The short
+    // version, in the order the arguments actually matter:
+    //
+    //   1. SUM'S FAILURE MODE IS A CHARGE NOBODY ASKED FOR. The shopper adds 2 on their phone
+    //      because they forgot the 1 on their laptop — the single most likely reason the same
+    //      product is in both carts — and sum bills them for 3. Max's failure mode is the shopper
+    //      who genuinely wanted 1+2=3, sees 2 in the drawer, and clicks + once. One of those
+    //      failures is visible and costs a click. The other is money.
+    //   2. SUM HAS NOWHERE TO PUT AN OVERFLOW. 60 and 50 is 110, and the per-line maximum is 99. So
+    //      sum needs a SECOND rule — clamp? refuse? — and here is the thing: add-to-cart can refuse,
+    //      because the shopper is right there and a 422 is a real answer. A merge happens inside a
+    //      LOGIN. There is no shopper waiting on a cart error; there is a shopper waiting to be
+    //      signed in. Sum's overflow rule can therefore only ever be "silently clamp": a quantity
+    //      nobody chose, produced by a rule nobody wrote down, discovered by finance. Max of two
+    //      legal quantities is legal. Always. The rule that needs no exception is usually the rule.
+    //   3. MAX IS IDEMPOTENT AND SUM IS NOT. max(max(a,b), b) == max(a,b); a+b+b is not a+b. Merging
+    //      twice is a thing that happens — a retried login, a double-submitted form, a request whose
+    //      response was lost on the way back — and with max, the second merge produces the identical
+    //      cart. Sum doubles the collision, and the shopper's evidence that it happened is a number
+    //      that looks plausible.
+    //
+    // 🔍 the interesting cases are the collisions, and that is where the tests are: same product both
+    // sides with either one bigger, both equal, one cart empty, disjoint products, and merging the
+    // same source twice. The disjoint case is arithmetic; the collisions are the policy.
+    public void MergeFrom(Cart source, DateTimeOffset nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (source.Id == Id)
+        {
+            throw new DomainRuleException("A cart cannot be merged into itself.");
+        }
+
+        foreach (CartLine incoming in source.Lines)
+        {
+            CartLine? mine = _lines.SingleOrDefault(line => line.ProductId == incoming.ProductId);
+
+            if (mine is null)
+            {
+                // WHY the snapshot and the added-at instant TRAVEL with the line rather than being
+                // re-taken as of now: they are facts about what happened to the shopper, and the
+                // shopper is the same person on both sides of the login. Re-stamping them would
+                // erase "the price dropped since you added this" at the exact moment we finally know
+                // who to tell.
+                _lines.Add(CartLine.Create(
+                    Id,
+                    incoming.ProductId,
+                    incoming.Quantity,
+                    incoming.PriceAtAddition,
+                    incoming.AddedAtUtc));
+
+                continue;
+            }
+
+            // The surviving line keeps its own history — its snapshot, its added-at. Nothing about it
+            // changed except, maybe, how many. Only the quantity is reconciled; only the quantity was
+            // ever in dispute.
+            mine.ChangeQuantity(Reconcile(mine.Quantity, incoming.Quantity));
+        }
+
+        Touch(nowUtc);
+    }
+
     /// <summary>Consume this cart: it has been merged elsewhere and must never be found again.</summary>
     // WHY retire and not DELETE — three reasons, in ascending order of how much they matter:
     //   1. It is what S03 decided for products, and a codebase with two answers to "how do we make a
@@ -204,6 +285,15 @@ public sealed class Cart
         RetiredAtUtc = nowUtc;
         Touch(nowUtc);
     }
+
+    /// <summary>Agora's merge policy, in one expression: the larger of the two wins.</summary>
+    // 📘 the policy is a NAMED FUNCTION with one line in it, and that is deliberate. Written as
+    // `Math.Max(mine.Quantity, incoming.Quantity)` inline, up in the loop, it would be an
+    // implementation detail — something that happened, that a later reader would assume had a reason,
+    // and that anyone could "fix" to a `+` in a hurry without ever knowing they had made a policy
+    // decision. Down here with a name and an ADR reference, changing it is obviously changing the
+    // rule. Reconciliation is a POLICY. Pick one; write it down; test the collisions.
+    private static int Reconcile(int mine, int incoming) => Math.Max(mine, incoming);
 
     private void Touch(DateTimeOffset nowUtc) => UpdatedAtUtc = nowUtc;
 
