@@ -35,4 +35,9 @@ public sealed class InMemoryCategoryRepository(IEnumerable<Category> categories)
 
     public Task<Category?> FindBySlugAsync(Slug slug, CancellationToken cancellationToken) =>
         Task.FromResult<Category?>(_categories.FirstOrDefault(c => c.Slug == slug));
+
+    public Task<Category?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult<Category?>(_categories.FirstOrDefault(c => c.Id == id));
+
+    public void Add(Category category) => _categories.Add(category);
 }
