@@ -103,6 +103,8 @@ public class ProductTests
         Product product = Make();
 
         Assert.Equal(1, product.Version);
+        Assert.False(product.IsArchived);
+        Assert.Null(product.ArchivedAtUtc);
     }
 
     [Fact]
@@ -165,4 +167,45 @@ public class ProductTests
             product.UpdateDetails(Guid.Empty, "Name", "desc", 1m, "USD"));
     }
 
+    [Fact]
+    public void Archive_records_the_timestamp_and_bumps_the_version()
+    {
+        Product product = Make();
+
+        product.Archive(SomeInstant);
+
+        Assert.True(product.IsArchived);
+        Assert.Equal(SomeInstant, product.ArchivedAtUtc);
+        Assert.Equal(2, product.Version);
+    }
+
+    [Fact]
+    public void Archiving_an_already_archived_product_throws()
+    {
+        Product product = Make();
+        product.Archive(SomeInstant);
+
+        Assert.Throws<DomainRuleException>(() => product.Archive(SomeInstant));
+    }
+
+    [Fact]
+    public void Restore_clears_the_archive_and_bumps_the_version()
+    {
+        Product product = Make();
+        product.Archive(SomeInstant);
+
+        product.Restore();
+
+        Assert.False(product.IsArchived);
+        Assert.Null(product.ArchivedAtUtc);
+        Assert.Equal(3, product.Version); // create(1) → archive(2) → restore(3)
+    }
+
+    [Fact]
+    public void Restoring_a_product_that_is_not_archived_throws()
+    {
+        Product product = Make();
+
+        Assert.Throws<DomainRuleException>(() => product.Restore());
+    }
 }

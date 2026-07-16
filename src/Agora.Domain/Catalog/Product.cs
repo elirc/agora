@@ -42,6 +42,17 @@ public sealed class Product
     // enforces it in the UPDATE's WHERE clause. Same mechanics everywhere. (ADR-0005.)
     public int Version { get; private set; }
 
+    // ⚠️ soft-archive: a product leaves the STOREFRONT without leaving the DATABASE. Archived is a
+    // STATE (this timestamp), never a DELETE — the row keeps its history, its slug, and its SKU, so
+    // past orders still resolve it and its identifiers stay reserved. Every catalog query must now
+    // DECLARE whether it wants archived rows (see IProductRepository / ProductStatusFilter): the
+    // storefront asks for active only, the admin list asks for all. There is no ambient default.
+    public DateTimeOffset? ArchivedAtUtc { get; private set; }
+
+    // Computed, not stored — deliberately UNMAPPED (see ModelMappingTests' allowlist). The single
+    // source of truth is ArchivedAtUtc; a stored bool alongside it could disagree with the timestamp.
+    public bool IsArchived => ArchivedAtUtc is not null;
+
     private Product(
         Guid id,
         Guid categoryId,
@@ -119,6 +130,35 @@ public sealed class Product
         Description = ValidDescription(description);
         PriceAmount = ValidPrice(priceAmount);
         PriceCurrency = ValidCurrency(priceCurrency);
+        Version++;
+    }
+
+    /// <summary>Remove the product from the storefront while keeping the row and its history.</summary>
+    // LEARN: archiving is a state transition with a guard, not an idempotent toggle. Archiving an
+    // already-archived product is a 422 (the admin's view was stale) rather than a silent no-op —
+    // and because it would otherwise bump Version for no real change, the guard keeps the token
+    // honest. The concurrency check upstream will usually catch the stale view first; this is the
+    // domain saying no even if it doesn't.
+    public void Archive(DateTimeOffset nowUtc)
+    {
+        if (IsArchived)
+        {
+            throw new DomainRuleException("Product is already archived.");
+        }
+
+        ArchivedAtUtc = nowUtc;
+        Version++;
+    }
+
+    /// <summary>Return an archived product to the storefront.</summary>
+    public void Restore()
+    {
+        if (!IsArchived)
+        {
+            throw new DomainRuleException("Product is not archived.");
+        }
+
+        ArchivedAtUtc = null;
         Version++;
     }
 
