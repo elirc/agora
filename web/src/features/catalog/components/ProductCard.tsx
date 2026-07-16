@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { ProductDto } from '../../../api/client';
 import { AddToCartButton } from '../../cart/components/AddToCartButton';
 import { PriceDisplay } from './PriceDisplay';
+import { StockBadge } from '../../inventory/components/StockBadge';
 
 // ⚠️ S05 CHANGED THE SHAPE OF THIS CARD, AND THE REASON IS NOT COSMETIC. Until now the whole card was
 // one big <Link>. It cannot stay that way once it has a second action, because a <button> inside an
@@ -29,6 +30,7 @@ export function ProductCard({ product }: { product: ProductDto }) {
             different ways — the bug where a card says $40 and the page you land on says $50. */}
         <div className="mt-3">
           <PriceDisplay product={product} />
+          <StockBadge productId={product.id} />
         </div>
       </div>
 

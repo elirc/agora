@@ -1,6 +1,7 @@
 using Agora.Application.Abstractions;
 using Agora.Domain.Access;
 using Agora.Domain.Catalog;
+using Agora.Domain.Inventory;
 using Agora.Domain.Pricing;
 using Agora.Domain.Values;
 using Microsoft.EntityFrameworkCore;
@@ -132,8 +133,24 @@ public static class AgoraSeeder
         db.Products.AddRange(products);
 
         SeedSaleCampaigns(db, products, clock.GetUtcNow());
+        SeedStock(db, products, clock.GetUtcNow());
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // S06 — a shelf for every product, and deliberately not the same number on each.
+    // WHY the varied counts: a seed where everything has 50 in stock demonstrates nothing. This one
+    // gives you a shop with a healthy middle, two items sitting on the low-stock threshold, and one
+    // genuinely sold out — so `-- seed` produces an admin low-stock view with rows in it and a
+    // storefront with an out-of-stock badge, immediately, without anyone having to buy anything.
+    private static void SeedStock(AgoraDbContext db, IReadOnlyList<Product> products, DateTimeOffset now)
+    {
+        int[] shelf = [12, 8, 3, 25, 0, 6, 2, 40, 15, 1, 9, 30];
+
+        for (int i = 0; i < products.Count; i++)
+        {
+            db.StockLevels.Add(StockLevel.Create(products[i].Id, shelf[i % shelf.Length], now));
+        }
     }
 
     // A running sale and a scheduled one, so `dotnet run -- seed` gives you a storefront with a

@@ -62,6 +62,19 @@ public class ModelMappingTests : IClassFixture<AgoraApiFactory>
     [
         "Product.IsArchived",
         "Cart.IsRetired",
+
+        // S06. The third of exactly the same shape — a bool computed from the timestamp that decides
+        // it (ReleasedAtUtc). Three entries, one pattern, and the pattern is the point: a stored flag
+        // beside its own timestamp is a second opinion waiting to disagree, and the disagreement will
+        // be discovered by whoever is holding the last skillet.
+        //
+        // ⚠️ NOTE WHAT IS NOT ON THIS LIST. Reservation.Window and StockLevel.Version are both mapped
+        // for real. The temptation, when this test goes red, is always to add a line here and move on —
+        // it takes four seconds and the build goes green. That is how a guard dies: this allowlist is a
+        // record of DECISIONS, and every entry has to be a sentence someone could defend out loud.
+        // "It is derived from a column that is right there" is such a sentence. "I was in a hurry" is
+        // not, and S04 nearly proved it by almost allowlisting Product.Price.
+        "Reservation.IsReleased",
     ];
 
     [Fact]

@@ -34,6 +34,10 @@ api.MapAuth();
 // merges that cart into the owned one (see MapAuth above) — the cart survives becoming someone.
 api.MapCart();
 
+// S06 — stock. Availability rides the catalog routes a shopper already reads; reserving hangs off the
+// cart, because a claim belongs to whoever is checking out — which may be somebody with no account.
+api.MapInventory();
+
 // S03 — the Store Admin back-office. Every route under /admin is StoreAdmin-only (the guard lives
 // in each use case's RequireRole, enumerated in AuthorizationMatrixTests). This is Agora's FIRST
 // set of 403s: catalog reads stay public, but writing the catalog is a privileged act.

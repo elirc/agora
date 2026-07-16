@@ -598,6 +598,185 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/v1/products/{id}/stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How many of a product a shopper could claim right now. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StockDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cart/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hold stock for the caller's cart while they check out. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReserveStockRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReservationResultDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        /** Give back everything the caller's cart is holding. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/stock/low": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Products at or below a stock threshold — the shop's own view. */
+        get: {
+            parameters: {
+                query?: {
+                    threshold?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LowStockDto"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/categories": {
         parameters: {
             query?: never;
@@ -1482,6 +1661,18 @@ export interface components {
             email: null | string;
             password: null | string;
         };
+        LowStockDto: {
+            /** Format: uuid */
+            productId: string;
+            name: string;
+            sku: string;
+            /** Format: int32 */
+            onHand: number | string;
+            /** Format: int32 */
+            reserved: number | string;
+            /** Format: int32 */
+            available: number | string;
+        };
         MeDto: {
             /** Format: uuid */
             id: string;
@@ -1525,6 +1716,28 @@ export interface components {
             email: null | string;
             password: null | string;
         };
+        ReservationDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantity: number | string;
+            /** Format: date-time */
+            expiresAtUtc: string;
+        };
+        ReservationResultDto: {
+            success: boolean;
+            reservation: null | components["schemas"]["ReservationDto"];
+            /** Format: int32 */
+            available: number | string;
+        };
+        ReserveStockRequest: {
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantity: number | string;
+        };
         SaleDto: {
             /** Format: uuid */
             campaignId: string;
@@ -1533,6 +1746,13 @@ export interface components {
             startsAtUtc: string;
             /** Format: date-time */
             endsAtUtc: string;
+        };
+        StockDto: {
+            /** Format: int32 */
+            available: number | string;
+            inStock: boolean;
+            /** Format: date-time */
+            availableAt: string;
         };
         UpdateCartLineQuantityRequest: {
             /** Format: int32 */

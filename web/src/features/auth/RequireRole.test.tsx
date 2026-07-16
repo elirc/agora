@@ -19,7 +19,7 @@ function renderGuardedAdmin() {
           <Route
             path="/admin/products"
             element={
-              <RequireRole role="StoreAdmin">
+              <RequireRole anyOf={['StoreAdmin']}>
                 <div>Back-office catalog</div>
               </RequireRole>
             }
@@ -39,7 +39,7 @@ describe('RequireRole', () => {
 
     renderGuardedAdmin();
 
-    expect(await screen.findByText('Store Admins only')).toBeInTheDocument();
+    expect(await screen.findByText('Not your part of the shop')).toBeInTheDocument();
     expect(screen.queryByText('Back-office catalog')).not.toBeInTheDocument();
     // A wrong role is NOT sent to login — logging in as themselves wouldn't help.
     expect(screen.queryByText('Login page')).not.toBeInTheDocument();
@@ -51,7 +51,7 @@ describe('RequireRole', () => {
     renderGuardedAdmin();
 
     expect(await screen.findByText('Back-office catalog')).toBeInTheDocument();
-    expect(screen.queryByText('Store Admins only')).not.toBeInTheDocument();
+    expect(screen.queryByText('Not your part of the shop')).not.toBeInTheDocument();
   });
 
   it('bounces an anonymous visitor to /login', async () => {

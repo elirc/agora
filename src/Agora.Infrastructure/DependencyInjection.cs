@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ISaleCampaignRepository, SaleCampaignRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
+        services.AddScoped<IInventoryRepository, InventoryRepository>();
 
         // S05 — the event seam. Today events are written to the log and nothing more; the PORT is
         // what matters, because S10 replaces this adapter with a transactional outbox without a

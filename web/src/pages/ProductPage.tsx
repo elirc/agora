@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { AddToCartButton } from '../features/cart/components/AddToCartButton';
 import { PriceDisplay } from '../features/catalog/components/PriceDisplay';
+import { StockBadge } from '../features/inventory/components/StockBadge';
 import { formatSaleEnds } from '../features/catalog/format';
 import { useProduct } from '../features/catalog/queries';
 
@@ -52,6 +53,9 @@ export function ProductPage() {
 
       <div className="mt-2">
         <PriceDisplay product={product} size="lg" />
+        <div className="mt-2">
+          <StockBadge productId={product.id} verbose />
+        </div>
       </div>
 
       {/* The sale's own metadata, which only the product page has room for. WHY show the end date at

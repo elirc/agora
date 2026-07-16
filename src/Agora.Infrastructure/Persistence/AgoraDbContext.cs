@@ -1,6 +1,7 @@
 using Agora.Domain.Access;
 using Agora.Domain.Carts;
 using Agora.Domain.Catalog;
+using Agora.Domain.Inventory;
 using Agora.Domain.Pricing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -26,6 +27,15 @@ public sealed class AgoraDbContext(DbContextOptions<AgoraDbContext> options)
     // and mutate a line without the cart that owns it — and the boundary the domain draws would be one
     // `db.CartLines.Where(...)` away from meaningless.
     public DbSet<Cart> Carts => Set<Cart>();
+
+    // S06 — inventory. Two DbSets and NOT an aggregate, which is the opposite call to Cart/CartLine
+    // above and worth the contrast. A cart line is meaningless without its cart. A reservation is a
+    // claim in its own right: it outlives the cart that made it, it is queried by the sweep across
+    // every product at once, and the availability question needs the claims WITHOUT loading a shelf
+    // through a navigation. Different lifetimes, different query shapes, different roots.
+    public DbSet<StockLevel> StockLevels => Set<StockLevel>();
+
+    public DbSet<Reservation> Reservations => Set<Reservation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

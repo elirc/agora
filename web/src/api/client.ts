@@ -348,3 +348,31 @@ export function isConflict(error: unknown): boolean {
 export function isValidationProblem(error: unknown): boolean {
   return error instanceof ApiError && error.status === 422;
 }
+
+// S06 — inventory. `available` is a read of a MOVING number and the DTO says so by carrying the
+// instant it was true at: between this response and a click, a reservation can lapse and another can
+// be taken. The promise is made when a reservation is written, not when a badge is rendered.
+export type StockDto = components['schemas']['StockDto'];
+export type LowStockDto = components['schemas']['LowStockDto'];
+export type ReservationResultDto = components['schemas']['ReservationResultDto'];
+
+export async function getStock(productId: string): Promise<StockDto> {
+  const response = await request(`/api/v1/products/${encodeURIComponent(productId)}/stock`);
+  return (await response.json()) as StockDto;
+}
+
+export async function listLowStock(threshold?: number): Promise<LowStockDto[]> {
+  const response = await request(`/api/v1/admin/stock/low${queryString({ threshold })}`);
+  return (await response.json()) as LowStockDto[];
+}
+
+export async function reserveStock(
+  productId: string,
+  quantity: number,
+): Promise<ReservationResultDto> {
+  const response = await request('/api/v1/cart/reservations', {
+    method: 'POST',
+    body: JSON.stringify({ productId, quantity }),
+  });
+  return (await response.json()) as ReservationResultDto;
+}

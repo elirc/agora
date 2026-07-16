@@ -35,6 +35,11 @@ export function Header({ onOpenCart }: { onOpenCart: () => void }) {
               {/* The Admin link only appears for a StoreAdmin. WHY this is UX, not security: the
                   server gates every /admin/* request regardless of who can SEE the link — hiding it
                   is a courtesy to the other roles, not a boundary. (RequireRole / the authz matrix.) */}
+              {(user.role === 'StoreAdmin' || user.role === 'Ops') && (
+                <Link to="/admin/stock" className="text-neutral-700 hover:underline">
+                  Stock
+                </Link>
+              )}
               {user.role === 'StoreAdmin' && (
                 <Link to="/admin/products" className="text-neutral-700 hover:underline">
                   Admin

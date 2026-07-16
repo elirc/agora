@@ -152,6 +152,23 @@ public class AuthorizationMatrixTests : IClassFixture<AgoraApiFactory>, IAsyncLi
     ];
 
     public static IEnumerable<object?[]> AdminGet() => AdminPersonaExpectations(200);
+
+    // 📘 THE FIRST TIME OPS IS ALLOWED SOMETHING, and the row is the argument. Every /admin route
+    // until now has been StoreAdmin-only with Ops sitting in the 403 column beside the customer,
+    // which makes it easy to read "Ops" as "a customer with a nicer job title". It is not: Ops packs
+    // the boxes, so Ops is exactly who needs to know what is running out — and still may not touch a
+    // price, because pricing is not their job either.
+    //
+    // This is what "roles are capabilities, not a hierarchy" (S02) looks like when it finally costs
+    // something. A hierarchy would have made this free and made the NEXT question — may Ops edit the
+    // catalog? — free too, in the wrong direction. Two roles, two capabilities, one table saying so.
+    public static IEnumerable<object?[]> OpsOrAdminGet() =>
+    [
+        [null, HttpStatusCode.Unauthorized],
+        ["customer", HttpStatusCode.Forbidden],
+        ["ops", HttpStatusCode.OK],
+        ["admin", HttpStatusCode.OK],
+    ];
     public static IEnumerable<object?[]> AdminCreate() => AdminPersonaExpectations(201);
     public static IEnumerable<object?[]> AdminMutate() => AdminPersonaExpectations(200);
 
@@ -387,6 +404,40 @@ public class AuthorizationMatrixTests : IClassFixture<AgoraApiFactory>, IAsyncLi
             .PostAsJsonAsync("/api/v1/admin/products", NewProductRequest());
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<AdminProductDto>())!;
+    }
+
+    // ── S06: inventory ───────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [MemberData(nameof(OpsOrAdminGet))]
+    public async Task Low_stock_is_visible_to_the_shop_not_to_shoppers(string? persona, HttpStatusCode expected)
+    {
+        Assert.Equal(expected, (await As(persona).GetAsync("/api/v1/admin/stock/low")).StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllPersonas))]
+    public async Task Stock_availability_is_public_like_the_catalog_it_describes(string? persona)
+    {
+        // "How many can I have?" is a fact about a skillet, and a shopper deciding whether to bother
+        // signing up is exactly who needs it.
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await As(persona).GetAsync($"/api/v1/products/{_cartProductId}/stock")).StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllPersonas))]
+    public async Task Reserving_stock_is_open_to_everyone_including_anonymous(string? persona)
+    {
+        // ⚠️ The row that would be a bug if it said 401. Reservations are held by a CART, and S05
+        // established that a cart may belong to an anonymous browser. Require a session here and the
+        // last skillet becomes reservable only by people who already signed up — so the shopper most
+        // likely to abandon is the only one who cannot hold what they are buying.
+        HttpResponseMessage response = await As(persona)
+            .PostAsJsonAsync("/api/v1/cart/reservations", new ReserveStockRequest(_cartProductId, 1));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     private HttpClient As(string? persona) => _factory.As(TokenFor(persona));

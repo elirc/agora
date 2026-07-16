@@ -1,0 +1,135 @@
+# Agora — inventory & reservations (Sprint 06)
+# Run against: dotnet run --project src/Agora.Api  (defaults to http://localhost:5158)
+# Seed first:  dotnet run --project src/Agora.Api -- migrate seed
+# VS Code REST Client / JetBrains HTTP client compatible.
+#
+# The seed gives every product a shelf, deliberately at different heights: a healthy middle, two
+# products sitting on the low-stock threshold, and one genuinely sold out — so the low-stock view has
+# rows in it and the storefront has an out-of-stock badge, immediately, without buying anything.
+
+@host = http://localhost:5158
+
+# ── What a shopper may have ───────────────────────────────────────────────────────────────────
+
+### Availability. Note `availableAt`: the count is a read of a MOVING number, and the timestamp says
+# so out loud. Between this response and a click, a reservation can lapse and another can be taken.
+# The number was true when computed. That is not the same as being true now.
+# @name stock
+GET {{host}}/api/v1/products/{{productId}}/stock
+
+### The sold-out one from the seed (AGA-KIT-002's neighbours vary; find one with available: 0).
+GET {{host}}/api/v1/products?limit=12
+
+# ── Holding stock ─────────────────────────────────────────────────────────────────────────────
+
+### Reserve. ANONYMOUS on purpose: a claim is held by a CART, and S05 established a cart may belong
+# to a browser with no account. Require a session here and the last skillet becomes reservable only
+# by people who already signed up — the shopper most likely to abandon is the only one who cannot
+# hold what they are buying. The response mints agora_cart if this is your first write.
+# @name reserve
+POST {{host}}/api/v1/cart/reservations
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "quantity": 1
+}
+
+### Reserve MORE than exists → 200 with success:false and the number that stopped you.
+# 🔍 Not a 4xx. The request was well formed and the answer is simply no — "you cannot have nine of
+# these" is Tuesday, not an error. And a UI needs the NUMBER: "only 3 left" is a sentence a shopper
+# can act on; a 409 with the count buried in a `detail` string is a number somebody parses out of
+# prose. Compare with the next request: two different kinds of no, two different shapes.
+POST {{host}}/api/v1/cart/reservations
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "quantity": 9999
+}
+
+### Reserve a product that does not exist → 404. THIS is the other kind of no: you asked about
+# nothing. (Since S06, every product has a shelf — so "no stock row" genuinely means "no product",
+# and this 404 is true rather than merely usual.)
+POST {{host}}/api/v1/cart/reservations
+Content-Type: application/json
+
+{
+  "productId": "00000000-0000-0000-0000-000000000000",
+  "quantity": 1
+}
+
+### Reserve twice from the same cart → the claim is REPLACED, not stacked. Ask for 2, then 3: you
+# end up holding 3, not 5. Count a shopper's own claim against them and they are refused stock the
+# shop is holding on their behalf — unbuyable by them, unavailable to anyone else, until it expires.
+POST {{host}}/api/v1/cart/reservations
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "quantity": 3
+}
+
+### Give it all back (the checkout finished, or the shopper gave up).
+DELETE {{host}}/api/v1/cart/reservations
+
+# ── Watch expiry happen with nothing running ──────────────────────────────────────────────────
+#
+# TRY: reserve the last unit of something, then check availability — it is 0. Now wait fifteen
+# minutes and check again. It is 1, and NOTHING RAN: no job, no sweep, no notification. The window
+# passed, so IsActiveAt(now) went false, so availability stopped counting it. That is the entire
+# mechanism.
+#
+# The sweep (ReleaseExpiredReservations) is a JANITOR that marks rows which already stopped
+# mattering — it keeps queries small and the table legible. Switch it off for a week and the shop is
+# correct and untidy. A background job whose failure is a mess rather than an outage is the one to
+# aim for; the alternative (availability reads a counter only the sweep decrements) turns a stuck
+# job into silent overselling.
+
+# ── The shop's own view ───────────────────────────────────────────────────────────────────────
+
+### Sign in as the Store Admin (dev creds are public on purpose — see AgoraSeeder).
+# @name signIn
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@agora.test",
+  "password": "admin-password-dev"
+}
+
+### Running low. THREE numbers per row, not one: "2 available" is an emergency if two are on the
+# shelf and a non-event if nine are on the shelf with seven in people's carts. Same figure, opposite
+# actions — and a report showing only availability sends someone to the stockroom to count skillets
+# that are already there.
+GET {{host}}/api/v1/admin/stock/low
+
+### A different threshold — it is a query parameter, not a business rule. The shop discovers its own
+# number by using the thing.
+GET {{host}}/api/v1/admin/stock/low?threshold=10
+
+### As OPS. The first endpoint in Agora that two roles reach: Ops packs the boxes, so Ops is exactly
+# who needs to know what is running out — and still may not touch a price. That is "roles are
+# capabilities, not a hierarchy" (S02) finally costing something.
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "ops@agora.test",
+  "password": "ops-password-dev"
+}
+
+###
+GET {{host}}/api/v1/admin/stock/low
+
+### As a CUSTOMER → 403. Not 401: we know exactly who you are, and the answer is still no.
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "shopper@agora.test",
+  "password": "shopper-password-dev"
+}
+
+###
+GET {{host}}/api/v1/admin/stock/low

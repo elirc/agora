@@ -7,6 +7,7 @@ import { AccountPage } from '../pages/AccountPage';
 import { AdminProductsPage } from '../pages/admin/AdminProductsPage';
 import { AdminProductNewPage } from '../pages/admin/AdminProductNewPage';
 import { AdminProductEditPage } from '../pages/admin/AdminProductEditPage';
+import { AdminStockPage } from '../pages/admin/AdminStockPage';
 import { RequireAuth } from '../features/auth/RequireAuth';
 import { RequireRole } from '../features/auth/RequireRole';
 import { RootLayout } from './RootLayout';
@@ -37,7 +38,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/products',
         element: (
-          <RequireRole role="StoreAdmin">
+          <RequireRole anyOf={['StoreAdmin']}>
             <AdminProductsPage />
           </RequireRole>
         ),
@@ -45,15 +46,26 @@ export const router = createBrowserRouter([
       {
         path: '/admin/products/new',
         element: (
-          <RequireRole role="StoreAdmin">
+          <RequireRole anyOf={['StoreAdmin']}>
             <AdminProductNewPage />
+          </RequireRole>
+        ),
+      },
+      // The stock view is StoreAdmin OR Ops — the first route in Agora that two roles reach, and the
+      // reason RequireRole takes a list. It mirrors the server exactly (see AuthorizationMatrixTests'
+      // OpsOrAdminGet rows); it does not decide anything.
+      {
+        path: '/admin/stock',
+        element: (
+          <RequireRole anyOf={['StoreAdmin', 'Ops']}>
+            <AdminStockPage />
           </RequireRole>
         ),
       },
       {
         path: '/admin/products/:id',
         element: (
-          <RequireRole role="StoreAdmin">
+          <RequireRole anyOf={['StoreAdmin']}>
             <AdminProductEditPage />
           </RequireRole>
         ),

@@ -4,6 +4,7 @@ using Agora.Application.Abstractions;
 using Agora.Application.Auth;
 using Agora.Application.Carts;
 using Agora.Application.Catalog;
+using Agora.Application.Inventory;
 using Agora.Application.Pricing;
 using Agora.Infrastructure;
 
@@ -62,6 +63,15 @@ public static class ServiceRegistration
         builder.Services.AddScoped<RemoveCartLine>();
         builder.Services.AddScoped<ClearCart>();
         builder.Services.AddScoped<MergeCarts>();
+
+        // S06 — inventory. The sweep is registered too: it is a use case like any other, and S15
+        // gives it a schedule. Nothing about correctness depends on it running (see ReleaseExpired-
+        // Reservations) — it is a janitor, and a janitor is still worth having.
+        builder.Services.AddScoped<StockAvailabilityQuery>();
+        builder.Services.AddScoped<ListLowStock>();
+        builder.Services.AddScoped<ReserveStock>();
+        builder.Services.AddScoped<ReleaseCartReservations>();
+        builder.Services.AddScoped<ReleaseExpiredReservations>();
 
         builder.Services.AddScoped<RegisterCustomer>();
         builder.Services.AddScoped<Login>();
