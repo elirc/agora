@@ -263,6 +263,73 @@ namespace Agora.Infrastructure.Persistence.Migrations
                     b.ToTable("products", (string)null);
                 });
 
+            modelBuilder.Entity("Agora.Domain.Inventory.Reservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CartId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ReleasedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Window", "Agora.Domain.Inventory.Reservation.Window#DateRange", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<DateTimeOffset>("Ends")
+                                .HasColumnType("timestamp with time zone")
+                                .HasColumnName("EndsAtUtc");
+
+                            b1.Property<DateTimeOffset>("Starts")
+                                .HasColumnType("timestamp with time zone")
+                                .HasColumnName("StartsAtUtc");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CartId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ReleasedAtUtc");
+
+                    b.ToTable("reservations", (string)null);
+                });
+
+            modelBuilder.Entity("Agora.Domain.Inventory.StockLevel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("OnHand")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId")
+                        .IsUnique();
+
+                    b.ToTable("stock_levels", (string)null);
+                });
+
             modelBuilder.Entity("Agora.Domain.Pricing.SaleCampaign", b =>
                 {
                     b.Property<Guid>("Id")
