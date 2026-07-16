@@ -1,0 +1,260 @@
+# Agora — the cart: anonymous, owned, and merged (Sprint 05)
+# Run against: dotnet run --project src/Agora.Api  (defaults to http://localhost:5158)
+# Seed first:  dotnet run --project src/Agora.Api -- migrate seed
+# VS Code REST Client / JetBrains HTTP client compatible.
+#
+# ⚠️ THIS FILE IS BEST READ WITH THE COOKIE JAR VISIBLE. The whole sprint is about two cookies that
+# look identical and mean opposite things — agora_session says WHO YOU ARE, agora_cart is a claim
+# check that says nothing about you at all. Your REST client stores both; watch which requests send
+# which, and which responses mint or clear them. (docs/concepts/identity-vs-resource.md)
+
+@host = http://localhost:5158
+
+# ── A shopper with no account ─────────────────────────────────────────────────────────────────
+
+### Nobody has ever been here. 200 with an empty cart — NOT a 404.
+# Every shopper has a cart; an empty one is a cart. "You don't have a cart yet" is a distinction the
+# database cares about and a shopper has never once needed — so there is no POST /cart either.
+# NOTICE the response headers: no Set-Cookie. A GET that mints a cookie is a GET with a side effect,
+# and the side effect is a row — every crawler that ever touched the storefront would leave one.
+GET {{host}}/api/v1/cart
+
+### The first WRITE mints the cart cookie. Look at the Set-Cookie:
+#   agora_cart=agr_…; expires=…; path=/; secure; samesite=lax; httponly
+# All three flags, on a token that authenticates nothing. "Unprivileged" is not "public": it is still
+# somebody's shopping, and the SAFETY of a cookie has nothing to do with the PRIVILEGE of its token.
+# Note there is NO agora_session here. Adding to a cart does not sign you in.
+# @name firstAdd
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "PASTE_PRODUCT_ID_HERE",
+  "quantity": 2
+}
+
+### Read the response body as a list of things the client is NOT trusted to work out:
+#   unitPriceAmount   34.50   what one costs RIGHT NOW — sale applied, resolved this request
+#   lineTotalAmount   69.00   unit × quantity, multiplied in C# decimal
+#   subtotalAmount    69.00   the lines folded with Money.Add — the currency gate is in that fold
+#   priceAtAdditionAmount     what we QUOTED you. Never charged. See the price-change section below.
+#   priceChanged      false   whether those two disagree
+# There is deliberately no itemCount: the badge sums integers in the browser, which is exact. The rule
+# is about MONEY, not arithmetic.
+GET {{host}}/api/v1/cart
+
+### 200, not 201 — and this is the request that proves why. Add the SAME product again and no line is
+# created; the existing one goes from 2 to 5. A 201 would be a lie on exactly these requests, and the
+# client cannot tell which kind it made. (The event makes the same call: cart.product_added, never
+# cart.line_added.)
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "PASTE_PRODUCT_ID_HERE",
+  "quantity": 3
+}
+
+# ── Editing ───────────────────────────────────────────────────────────────────────────────────
+
+### Set an exact quantity. WHY an exact quantity and not a delta ({"by": 1}): a delta is not
+# idempotent. Retry it — flaky network, double click, a service worker replaying a queued request —
+# and the shopper has two of something they asked for once.
+PATCH {{host}}/api/v1/cart/lines/PASTE_LINE_ID_HERE
+Content-Type: application/json
+
+{
+  "quantity": 4
+}
+
+### Remove a line. 200 with the WHOLE CART, not 204 — and that is a deliberate break with convention.
+# Removing a line changes the subtotal, so a 204 would leave the client holding a number that is now
+# false, with two options: a second round trip, or subtracting in JavaScript. The response IS the
+# authoritative cart.
+DELETE {{host}}/api/v1/cart/lines/PASTE_LINE_ID_HERE
+
+### Empty the cart.
+DELETE {{host}}/api/v1/cart
+
+### …and empty it again → still 200. DELETE is idempotent: that is what the verb MEANS, and every
+# double-click relies on it. "There was nothing to delete" is a successful delete.
+DELETE {{host}}/api/v1/cart
+
+# ── The merge: the sprint's flagship ──────────────────────────────────────────────────────────
+#
+# THE SCENARIO WORTH RUNNING BY HAND. Do it in this order and watch the cookies.
+#   1. Sign in as the demo shopper and put 3 of a product in their OWNED cart.
+#   2. Sign out (agora_session cleared; note agora_cart is NOT re-minted — see below).
+#   3. Add 2 of the SAME product anonymously → agora_cart is minted.
+#   4. Sign in again, presenting agora_cart.
+#   5. Read the cart. The answer is 3. Not 5.
+
+### 1. Sign in as the seeded shopper.
+# @name shopperLogin
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "shopper@agora.test",
+  "password": "shopper-password-dev"
+}
+
+### 1b. Their owned cart: 3 of the skillet. This cart is keyed by their USER ID; no token involved.
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "PASTE_PRODUCT_ID_HERE",
+  "quantity": 3
+}
+
+### 2. Sign out. agora_session is cleared — and NOTHING mints a cart cookie on the way out.
+# WHY: re-anonymising would copy a signed-in customer's cart into an unprivileged token, in the
+# browser of a machine they are deliberately walking away from. That is the shared-laptop bug,
+# written on purpose. Your cart is still yours; sign in and it is there.
+POST {{host}}/api/v1/auth/logout
+
+### 3. Anonymous now: 2 of the same skillet. This mints a fresh agora_cart.
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "PASTE_PRODUCT_ID_HERE",
+  "quantity": 2
+}
+
+### 4. Sign in, carrying that agora_cart. TWO things happen in this one response:
+#   • the merge runs (anonymous ⊕ owned), and
+#   • agora_cart is CLEARED — unconditionally. After this response there is no state in which keeping
+#     it is right: whatever it held is theirs now, and a token still in the jar is a second, stale
+#     answer to "whose cart is this?" waiting for someone's lookup to consult it.
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "shopper@agora.test",
+  "password": "shopper-password-dev"
+}
+
+### 5. THE ANSWER IS 3. Not 5, and not "whichever cart we read second."
+# The collision rule is take-the-larger (ADR-0007 §Decision 3), and the short version is:
+#   • SUM would bill for a skillet nobody asked for — the commonest reason a product is in both carts
+#     is that they added 2 on their phone BECAUSE they forgot the 3 in their account.
+#   • SUM has nowhere to put an overflow: 60 + 50 is 110 and the per-line max is 99. Add-to-cart can
+#     refuse (the shopper is right there). A MERGE HAPPENS INSIDE A LOGIN — there is no shopper
+#     waiting on a cart error, only one waiting to be signed in. So sum could only clamp, silently.
+#   • MAX is idempotent: max(max(a,b), b) == max(a,b). A retried login gives the same cart. a+b+b
+#     does not.
+# TRY: change the anonymous quantity to 5 and re-run 3–5. The answer becomes 5 — the larger wins, from
+# whichever side. Nothing a shopper put in a cart vanishes because they logged in.
+GET {{host}}/api/v1/cart
+
+### 6. The old anonymous token now finds NOTHING — the cart was retired, and the repository filters
+# retired carts out of both lookups. That filter is where the merge's idempotence comes from
+# operationally; `max` is where it comes from algebraically. Two independent reasons a retry is safe.
+# TRY: paste the old agora_cart value into a Cookie header by hand and re-run. Empty cart.
+GET {{host}}/api/v1/cart
+Cookie: agora_cart=PASTE_THE_OLD_CART_TOKEN_HERE
+
+### 7. REGISTER MERGES TOO, and it matters more than login: "create an account to check out" is the
+# oldest funnel in retail, so this path is the one more likely to be carrying a full cart — at the
+# highest-intent moment of the whole visit. Add something anonymously first, then run this.
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "new-shopper@example.com",
+  "password": "a-long-enough-password"
+}
+
+# ── Price snapshots vs live prices ────────────────────────────────────────────────────────────
+#
+# THE SECOND TEACHING AXIS. A cart line REMEMBERS what it was quoted and is NEVER CHARGED it.
+
+### Add the skillet while the seeded "Cast Iron Week" sale is running (20% off → 27.60).
+# priceAtAdditionAmount is 27.60; unitPriceAmount is 27.60; priceChanged is false.
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "PASTE_SKILLET_ID_HERE",
+  "quantity": 2
+}
+
+### Now end the sale early (as the Store Admin — see docs/http/pricing.http), and read the cart again:
+#   priceAtAdditionAmount   27.60   ← what we quoted. A fact about the past.
+#   unitPriceAmount         34.50   ← what it costs now. This is what you will be charged.
+#   priceChanged            true    ← so the shopper is TOLD, in the drawer, not on the receipt.
+#   subtotalAmount          69.00   ← built from the LIVE price
+#
+# Both alternatives are worse, and both are common:
+#   • Charge the snapshot → the cart honours an expired sale forever. That behaviour belongs to an
+#     ORDER (S07), because an order IS the transaction. A cart is a list of intentions.
+#   • Forget the snapshot → the number changes and nobody says anything. Honest arithmetic, dishonest
+#     service.
+# The snapshot is EVIDENCE, never input. Nothing in Agora does arithmetic with it.
+GET {{host}}/api/v1/cart
+
+# ── The refusals (each one is a rule with a home) ──────────────────────────────────────────────
+
+### quantity 0 → 422, and it is NOT a removal. `parseInt(input.value) || 0` is one of the most common
+# lines in front-end code, so "0" is what an EMPTY BOX sends. Being helpful here lets a client bug
+# silently delete a shopper's line. Two operations that mean different things get two verbs.
+PATCH {{host}}/api/v1/cart/lines/PASTE_LINE_ID_HERE
+Content-Type: application/json
+
+{
+  "quantity": 0
+}
+
+### 100 → 422 (the per-line maximum is 99). Note it REFUSES rather than clamping: the shopper is right
+# here and can pick a smaller number, if only we tell them. Clamping charges them for a quantity they
+# never chose and never hear about.
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "PASTE_PRODUCT_ID_HERE",
+  "quantity": 100
+}
+
+### An ARCHIVED product → 404, not 422. An archived product reads as not-found to a shopper
+# everywhere else (S03: GET /products/{slug} on one is a 404), so it reads as not-found here — same
+# product, same shopper, same question, same answer. A 422 would ALSO leak: "this exists, but no"
+# confirms the product is real to anyone willing to guess ids.
+# Archive one first via POST /api/v1/admin/products/{id}/archive (see docs/http/catalog-admin.http).
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "PASTE_ARCHIVED_PRODUCT_ID_HERE",
+  "quantity": 1
+}
+
+### A product that never existed → 404. Same shape, and deliberately indistinguishable from the above.
+POST {{host}}/api/v1/cart/lines
+Content-Type: application/json
+
+{
+  "productId": "00000000-0000-0000-0000-000000000000",
+  "quantity": 1
+}
+
+### SOMEBODY ELSE'S LINE ID → 404. Not 403, and this is the most important refusal in the file.
+# A 403 would say "this exists and you may not have it" — which, for a stranger iterating ids, is an
+# ORACLE: real ids answer 403, typos answer 404, and now you can map other people's carts without
+# ever seeing one. Same answer for "no such line", "not your line", and "you have no cart at all":
+# there is exactly one thing to learn from this endpoint, and it is nothing.
+# NOTICE there is no ownership check anywhere in the code. The cart was looked up BY your identity, so
+# a stranger's line is simply not in it. Ownership enforced by the QUERY is ownership nobody can
+# forget to enforce. TRY: grep the sprint for `if (line.CartId` — there isn't one.
+DELETE {{host}}/api/v1/cart/lines/PASTE_SOMEONE_ELSES_LINE_ID_HERE
+
+# ── What is NOT here ──────────────────────────────────────────────────────────────────────────
+#
+# No POST /cart          — you don't create a cart; you have one. It might be empty.
+# No GET /cart/{id}      — a cart is not addressable. What you never expose, you never defend.
+# No GET /cart/lines/{id} — the only readable thing is the cart.
+# No 401 or 403 on ANY route in this file — a cart is not gated by who you are. Every persona gets a
+#   200, including the anonymous one, because "hold a shopping list" is not a capability anyone grants.
+#   The boundary is ownership, and its answer is the 404 above.
