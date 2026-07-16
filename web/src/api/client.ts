@@ -7,6 +7,7 @@ import type { components } from './schema';
 export type CategoryDto = components['schemas']['CategoryDto'];
 export type ProductDto = components['schemas']['ProductDto'];
 export type ProblemDetails = components['schemas']['ProblemDetails'];
+export type MeDto = components['schemas']['MeDto'];
 
 /** One page of results plus the cursor for the next one (mirrors the backend's Page<T>). */
 export interface Page<T> {
@@ -35,8 +36,16 @@ export class ApiError extends Error {
 // WHY: this module is the ONE place in the app allowed to call fetch — the ESLint boundary rule
 // exempts src/api/ and forbids it everywhere else. Components ask for data through the query
 // hooks; the network lives behind this seam.
-async function request(path: string): Promise<Response> {
-  const response = await fetch(path, { headers: { Accept: 'application/json' } });
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(path, {
+    ...init,
+    // WHY credentials:'include' lives HERE, once (S02): the session cookie is HttpOnly, so JS
+    // never sees it — but the browser only ATTACHES it to requests that opt in. This single line
+    // is what makes every query and mutation below run AS the signed-in user. Same-origin in dev
+    // (the Vite /api proxy), so there is no CORS cost to including credentials.
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...init?.headers },
+  });
 
   if (!response.ok) {
     const problem = (await response.json().catch(() => null)) as ProblemDetails | null;
@@ -44,6 +53,14 @@ async function request(path: string): Promise<Response> {
   }
 
   return response;
+}
+
+async function postJson(path: string, body: unknown): Promise<Response> {
+  return request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 function queryString(params: Record<string, string | number | undefined>): string {
@@ -96,4 +113,44 @@ export async function listCategories(
 export async function getCategory(slug: string): Promise<CategoryDto> {
   const response = await request(`/api/v1/categories/${encodeURIComponent(slug)}`);
   return (await response.json()) as CategoryDto;
+}
+
+// ── Auth (S02) ─────────────────────────────────────────────────────────────────────────────
+
+export interface Credentials {
+  email: string;
+  password: string;
+}
+
+/**
+ * The current user, or `null` when nobody is signed in. A 401 is the EXPECTED "anonymous" answer
+ * here — the cookie was missing or stale — not a failure to surface, so we translate it to null.
+ * Every other error still propagates (a 500 is a real problem the UI should show).
+ */
+export async function getCurrentUser(): Promise<MeDto | null> {
+  try {
+    const response = await request('/api/v1/auth/me');
+    return (await response.json()) as MeDto;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function register(credentials: Credentials): Promise<MeDto> {
+  // The response body is the user; the session token rides an HttpOnly Set-Cookie the browser
+  // stores for us. We never see the token — that is the point of cookie sessions.
+  const response = await postJson('/api/v1/auth/register', credentials);
+  return (await response.json()) as MeDto;
+}
+
+export async function login(credentials: Credentials): Promise<MeDto> {
+  const response = await postJson('/api/v1/auth/login', credentials);
+  return (await response.json()) as MeDto;
+}
+
+export async function logout(): Promise<void> {
+  await postJson('/api/v1/auth/logout', {});
 }

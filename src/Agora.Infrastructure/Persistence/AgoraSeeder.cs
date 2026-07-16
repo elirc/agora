@@ -1,15 +1,65 @@
+using Agora.Application.Abstractions;
+using Agora.Domain.Access;
 using Agora.Domain.Catalog;
 using Microsoft.EntityFrameworkCore;
 
 namespace Agora.Infrastructure.Persistence;
 
 /// <summary>
-/// Idempotent dev/demo seed: four categories and a dozen products for a fictional small
-/// home-goods shop. No real brands, no assets — just enough catalog to browse.
+/// Idempotent dev/demo seed: a small home-goods catalog plus the three accounts you need to see
+/// every role in action. No real brands, no assets — just enough to browse and sign in.
 /// </summary>
 public static class AgoraSeeder
 {
+    // ── Documented dev credentials (DEV/TEST ONLY — never real secrets) ──────────────────────
+    // These accounts are seeded by `dotnet run --project src/Agora.Api -- seed` and by the API
+    // test factory. Passwords are long enough to satisfy the register rule; they are published on
+    // purpose so a learner can sign in as each role. See docs/http/auth.http and ADR-0004.
+    public const string StoreAdminEmail = "admin@agora.test";
+    public const string StoreAdminPassword = "admin-password-dev";
+    public const string OpsEmail = "ops@agora.test";
+    public const string OpsPassword = "ops-password-dev";
+    public const string CustomerEmail = "shopper@agora.test";
+    public const string CustomerPassword = "shopper-password-dev";
+
     public static async Task SeedAsync(
+        AgoraDbContext db,
+        IPasswordHasher hasher,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        await SeedCatalogAsync(db, clock, cancellationToken);
+        await SeedIdentityAsync(db, hasher, clock, cancellationToken);
+    }
+
+    private static async Task SeedIdentityAsync(
+        AgoraDbContext db,
+        IPasswordHasher hasher,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        // WHY a separate guard from the catalog block: identity and catalog seed independently, so
+        // re-running `seed` (or the test factory re-seeding the same in-memory DB) is harmless for
+        // each. The unique email index would otherwise trip on a second insert.
+        if (await db.Users.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        DateTimeOffset now = clock.GetUtcNow();
+
+        // LEARN: StoreAdmin and Ops are SEEDED, never self-registered — there is no public path to
+        // a privileged role (RegisterCustomer always mints a Customer). The demo shopper exists so
+        // the storefront has an owned cart to work with from S05.
+        db.Users.AddRange(
+            User.Create(EmailAddress.From(StoreAdminEmail), hasher.Hash(StoreAdminPassword), Role.StoreAdmin, now),
+            User.Create(EmailAddress.From(OpsEmail), hasher.Hash(OpsPassword), Role.Ops, now),
+            User.Create(EmailAddress.From(CustomerEmail), hasher.Hash(CustomerPassword), Role.Customer, now));
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedCatalogAsync(
         AgoraDbContext db,
         TimeProvider clock,
         CancellationToken cancellationToken)

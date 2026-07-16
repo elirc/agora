@@ -1,3 +1,4 @@
+using Agora.Domain.Access;
 using Agora.Domain.Catalog;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -9,6 +10,10 @@ public sealed class AgoraDbContext(DbContextOptions<AgoraDbContext> options)
 {
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
+
+    // S02 — identity. Users own carts and (from S07) orders; sessions back the login cookie.
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Session> Sessions => Set<Session>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

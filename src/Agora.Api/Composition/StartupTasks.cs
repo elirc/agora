@@ -1,3 +1,4 @@
+using Agora.Application.Abstractions;
 using Agora.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -42,7 +43,8 @@ public static class StartupTasks
         if (seed)
         {
             var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
-            await AgoraSeeder.SeedAsync(db, clock, CancellationToken.None);
+            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+            await AgoraSeeder.SeedAsync(db, hasher, clock, CancellationToken.None);
             app.Logger.LogInformation("Seed data applied.");
         }
 

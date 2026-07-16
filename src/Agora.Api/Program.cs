@@ -10,6 +10,10 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
+// Resolves the agora_session cookie (if any) into the request's current user. Downstream,
+// authorization is a POLICY decision (ICurrentUser.RequireUser/RequireRole), never ambient state.
+app.UseMiddleware<Agora.Api.Auth.SessionCookieAuthenticator>();
+
 // OpenAPI is served in every environment: the drift test (Api.Tests) and CI diff the committed
 // document against exactly what this endpoint returns.
 app.MapOpenApi();
@@ -23,6 +27,7 @@ app.MapOpenApi();
 RouteGroupBuilder api = app.MapGroup("/api/v1");
 api.MapCategories();
 api.MapProducts();
+api.MapAuth();
 
 // `dotnet run -- migrate seed` performs database chores and exits.
 if (await StartupTasks.HandleDatabaseCommandsAsync(app, args))
