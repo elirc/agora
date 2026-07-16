@@ -9,6 +9,13 @@ export type ProductDto = components['schemas']['ProductDto'];
 export type ProblemDetails = components['schemas']['ProblemDetails'];
 export type MeDto = components['schemas']['MeDto'];
 
+// S03 — admin catalog. These carry the version + archive state the storefront DTOs omit.
+export type AdminProductDto = components['schemas']['AdminProductDto'];
+export type AdminCategoryDto = components['schemas']['AdminCategoryDto'];
+export type CreateProductRequest = components['schemas']['CreateProductRequest'];
+export type UpdateProductRequest = components['schemas']['UpdateProductRequest'];
+export type CreateCategoryRequest = components['schemas']['CreateCategoryRequest'];
+
 /** One page of results plus the cursor for the next one (mirrors the backend's Page<T>). */
 export interface Page<T> {
   items: T[];
@@ -153,4 +160,98 @@ export async function login(credentials: Credentials): Promise<MeDto> {
 
 export async function logout(): Promise<void> {
   await postJson('/api/v1/auth/logout', {});
+}
+
+// ── Admin catalog (S03) ──────────────────────────────────────────────────────────────────────
+
+async function putJson(path: string, body: unknown): Promise<Response> {
+  return request(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export type ProductStatus = 'active' | 'archived' | 'all';
+
+export interface ListAdminProductsParams {
+  status?: ProductStatus;
+  cursor?: string;
+  limit?: number;
+}
+
+export async function listAdminProducts(
+  params: ListAdminProductsParams = {},
+): Promise<Page<AdminProductDto>> {
+  const response = await request(`/api/v1/admin/products${queryString({ ...params })}`);
+  return {
+    items: (await response.json()) as AdminProductDto[],
+    nextCursor: response.headers.get('X-Next-Cursor'),
+  };
+}
+
+export async function getAdminProduct(id: string): Promise<AdminProductDto> {
+  const response = await request(`/api/v1/admin/products/${encodeURIComponent(id)}`);
+  return (await response.json()) as AdminProductDto;
+}
+
+export async function createProduct(body: CreateProductRequest): Promise<AdminProductDto> {
+  const response = await postJson('/api/v1/admin/products', body);
+  return (await response.json()) as AdminProductDto;
+}
+
+export async function updateProduct(
+  id: string,
+  body: UpdateProductRequest,
+): Promise<AdminProductDto> {
+  const response = await putJson(`/api/v1/admin/products/${encodeURIComponent(id)}`, body);
+  return (await response.json()) as AdminProductDto;
+}
+
+export async function archiveProduct(id: string, expectedVersion: number): Promise<AdminProductDto> {
+  const response = await postJson(
+    `/api/v1/admin/products/${encodeURIComponent(id)}/archive`,
+    { expectedVersion },
+  );
+  return (await response.json()) as AdminProductDto;
+}
+
+export async function restoreProduct(id: string, expectedVersion: number): Promise<AdminProductDto> {
+  const response = await postJson(
+    `/api/v1/admin/products/${encodeURIComponent(id)}/restore`,
+    { expectedVersion },
+  );
+  return (await response.json()) as AdminProductDto;
+}
+
+export async function createCategory(body: CreateCategoryRequest): Promise<AdminCategoryDto> {
+  const response = await postJson('/api/v1/admin/categories', body);
+  return (await response.json()) as AdminCategoryDto;
+}
+
+/**
+ * The current server state carried inside a 409 conflict body, or null. THIS is what makes the
+ * conflict recoverable: the server didn't just reject the stale write, it told us what the row
+ * looks like now, so the UI can show the other admin's version and let the user rebase.
+ */
+// WHY read it off `problem`: a non-2xx response is parsed into ApiError.problem as raw JSON, which
+// includes the `current` extension member even though the generated ProblemDetails type doesn't
+// name it (extensions are open-ended in RFC 7807). We narrow it here, in the one seam that owns
+// the network, rather than sprinkling casts through components.
+export function conflictState(error: unknown): AdminProductDto | null {
+  if (error instanceof ApiError && error.status === 409 && error.problem) {
+    const current = (error.problem as ProblemDetails & { current?: AdminProductDto }).current;
+    return current ?? null;
+  }
+  return null;
+}
+
+/** True when a thrown error is an optimistic-concurrency conflict (HTTP 409). */
+export function isConflict(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409;
+}
+
+/** True when a thrown error is a domain-rule validation problem (HTTP 422). */
+export function isValidationProblem(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 422;
 }

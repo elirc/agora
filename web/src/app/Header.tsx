@@ -21,6 +21,14 @@ export function Header() {
         <div className="flex items-center gap-4 text-sm">
           {user ? (
             <>
+              {/* The Admin link only appears for a StoreAdmin. WHY this is UX, not security: the
+                  server gates every /admin/* request regardless of who can SEE the link — hiding it
+                  is a courtesy to the other roles, not a boundary. (RequireRole / the authz matrix.) */}
+              {user.role === 'StoreAdmin' && (
+                <Link to="/admin/products" className="text-neutral-700 hover:underline">
+                  Admin
+                </Link>
+              )}
               <Link to="/account" className="text-neutral-700 hover:underline">
                 {user.email}
               </Link>
