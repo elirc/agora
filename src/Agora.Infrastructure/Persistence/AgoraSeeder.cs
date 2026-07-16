@@ -1,6 +1,8 @@
 using Agora.Application.Abstractions;
 using Agora.Domain.Access;
 using Agora.Domain.Catalog;
+using Agora.Domain.Pricing;
+using Agora.Domain.Values;
 using Microsoft.EntityFrameworkCore;
 
 namespace Agora.Infrastructure.Persistence;
@@ -111,21 +113,58 @@ public static class AgoraSeeder
                 "A tin of six aromatherapy steamers. Set one on the shower floor and let the eucalyptus do the rest.", 14.00m),
         ];
 
+        var products = new List<Product>();
+
         for (int i = 0; i < specs.Length; i++)
         {
             (Category category, string name, string slug, string sku, string description, decimal price) = specs[i];
 
-            db.Products.Add(Product.Create(
+            products.Add(Product.Create(
                 category.Id,
                 name,
                 Slug.From(slug),
                 Sku.From(sku),
                 description,
-                price,
-                "USD",
+                Money.Of(price, CurrencyCode.Usd),
                 anchor.AddMinutes(i + 1)));
         }
 
+        db.Products.AddRange(products);
+
+        SeedSaleCampaigns(db, products, clock.GetUtcNow());
+
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // A running sale and a scheduled one, so `dotnet run -- seed` gives you a storefront with a
+    // strike-through on it and an admin panel with something queued — the two states worth seeing.
+    private static void SeedSaleCampaigns(
+        AgoraDbContext db,
+        IReadOnlyList<Product> products,
+        DateTimeOffset now)
+    {
+        // LEARN: the windows are derived from the INJECTED clock, not from hardcoded dates — a
+        // literal "2026-08-01" would be a demo that quietly stops demonstrating anything the week
+        // after it was written. Relative-to-now windows keep the seed honest forever.
+        Product skillet = products.Single(product => product.Sku == Sku.From("AGA-KIT-002"));
+        Product planter = products.Single(product => product.Sku == Sku.From("AGA-GDN-002"));
+
+        db.SaleCampaigns.AddRange(
+            // Running right now: $34.50 skillet at 20% off → $27.60, "Save 20%".
+            SaleCampaign.Schedule(
+                skillet.Id,
+                "Cast Iron Week",
+                Discount.PercentOff(20m),
+                DateRange.From(now.AddDays(-2), now.AddDays(5)),
+                now.AddDays(-3)),
+
+            // Scheduled, not started: the admin panel shows it queued; the storefront shows nothing.
+            // This is the whole argument for a window in one row — nobody has to remember Friday.
+            SaleCampaign.Schedule(
+                planter.Id,
+                "Spring Planting Weekend",
+                Discount.AmountOff(15m),
+                DateRange.From(now.AddDays(7), now.AddDays(10)),
+                now));
     }
 }

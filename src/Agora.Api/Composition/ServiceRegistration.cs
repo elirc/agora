@@ -3,6 +3,7 @@ using Agora.Api.Errors;
 using Agora.Application.Abstractions;
 using Agora.Application.Auth;
 using Agora.Application.Catalog;
+using Agora.Application.Pricing;
 using Agora.Infrastructure;
 
 namespace Agora.Api.Composition;
@@ -40,6 +41,14 @@ public static class ServiceRegistration
         builder.Services.AddScoped<UpdateProduct>();
         builder.Services.AddScoped<ArchiveProduct>();
         builder.Services.AddScoped<RestoreProduct>();
+
+        // S04 — money & time-windowed pricing. ProductPricing is not a use case: it is the shared
+        // price-resolution query the storefront reads lean on (it owns the one clock read per
+        // request). The three campaign use cases are StoreAdmin-gated inside each RequireRole.
+        builder.Services.AddScoped<ProductPricing>();
+        builder.Services.AddScoped<CreateSaleCampaign>();
+        builder.Services.AddScoped<ListSaleCampaigns>();
+        builder.Services.AddScoped<EndSaleCampaign>();
 
         builder.Services.AddScoped<RegisterCustomer>();
         builder.Services.AddScoped<Login>();

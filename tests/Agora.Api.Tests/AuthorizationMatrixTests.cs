@@ -237,9 +237,70 @@ public class AuthorizationMatrixTests : IClassFixture<AgoraApiFactory>, IAsyncLi
             new ProductVersionRequest(archivedDto.Version))).StatusCode);
     }
 
+    // ── Admin pricing (S04): sale campaigns are catalog writes, so the same StoreAdmin-only rule ──
+    //
+    // 🔍 nothing new to argue about here, and THAT is the point worth noticing. S03 established that
+    // /admin/* is StoreAdmin-only with Ops in the deny set; S04 adds three routes and they inherit the
+    // rule by using the same RequireRole in the same place, so their rows drop straight into the same
+    // member-data helpers. A sprint that had to invent a NEW authorization shape for its endpoints
+    // would be telling you something had gone wrong with the old one.
+    //
+    // Note also which S04 endpoint is NOT in this table: there isn't one. Sale prices ride the
+    // existing public catalog reads (covered by Catalog_reads_are_public above) rather than a new
+    // route, because a shopper asking "what does this cost?" is the same question they always asked —
+    // it just has a better answer now.
+
+    [Theory]
+    [MemberData(nameof(AdminGet))]
+    public async Task List_campaigns_is_StoreAdmin_only(string? persona, HttpStatusCode expected)
+    {
+        AdminProductDto product = await CreateProductAsAdminAsync();
+
+        Assert.Equal(expected,
+            (await As(persona).GetAsync($"/api/v1/admin/products/{product.Id}/campaigns")).StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(AdminCreate))]
+    public async Task Create_campaign_is_StoreAdmin_only(string? persona, HttpStatusCode expected)
+    {
+        AdminProductDto product = await CreateProductAsAdminAsync();
+
+        HttpResponseMessage response = await As(persona).PostAsJsonAsync(
+            $"/api/v1/admin/products/{product.Id}/campaigns",
+            new CreateSaleCampaignRequest(
+                "Weekend Sale", "PercentOff", 20m,
+                DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)));
+
+        Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(AdminMutate))]
+    public async Task End_campaign_is_StoreAdmin_only(string? persona, HttpStatusCode expected)
+    {
+        AdminProductDto product = await CreateProductAsAdminAsync();
+        AdminSaleCampaignDto campaign = await CreateCampaignAsAdminAsync(product.Id);
+
+        Assert.Equal(expected,
+            (await As(persona).PostAsync($"/api/v1/admin/campaigns/{campaign.Id}/end", null)).StatusCode);
+    }
+
     private CreateProductRequest NewProductRequest() => new(
         _categoryId, $"Product {Guid.NewGuid():N}", null,
         $"SKU-{Guid.NewGuid():N}"[..20], "A fine thing.", 9.99m, "USD");
+
+    private async Task<AdminSaleCampaignDto> CreateCampaignAsAdminAsync(Guid productId)
+    {
+        HttpResponseMessage response = await _factory.As(_admin).PostAsJsonAsync(
+            $"/api/v1/admin/products/{productId}/campaigns",
+            new CreateSaleCampaignRequest(
+                "Weekend Sale", "PercentOff", 20m,
+                DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)));
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<AdminSaleCampaignDto>())!;
+    }
 
     private async Task<AdminProductDto> CreateProductAsAdminAsync()
     {
