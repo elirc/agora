@@ -1,4 +1,5 @@
 using Agora.Domain.Access;
+using Agora.Domain.Carts;
 using Agora.Domain.Catalog;
 using Agora.Domain.Pricing;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,12 @@ public sealed class AgoraDbContext(DbContextOptions<AgoraDbContext> options)
 
     // S04 — time-windowed sale prices. Read on every storefront page, written only by the admin.
     public DbSet<SaleCampaign> SaleCampaigns => Set<SaleCampaign>();
+
+    // S05 — carts. Note there is no DbSet<CartLine>: a line is reachable only through its cart, which
+    // is what an aggregate root MEANS. Adding one would hand every future caller a way to load, query
+    // and mutate a line without the cart that owns it — and the boundary the domain draws would be one
+    // `db.CartLines.Where(...)` away from meaningless.
+    public DbSet<Cart> Carts => Set<Cart>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

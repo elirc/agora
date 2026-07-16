@@ -1,4 +1,5 @@
 using Agora.Application.Abstractions;
+using Agora.Infrastructure.Events;
 using Agora.Infrastructure.Persistence;
 using Agora.Infrastructure.Persistence.Repositories;
 using Agora.Infrastructure.Security;
@@ -40,6 +41,12 @@ public static class DependencyInjection
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ISaleCampaignRepository, SaleCampaignRepository>();
+        services.AddScoped<ICartRepository, CartRepository>();
+
+        // S05 — the event seam. Today events are written to the log and nothing more; the PORT is
+        // what matters, because S10 replaces this adapter with a transactional outbox without a
+        // single use case changing. Delivery guarantees are that sprint's subject, not this one's.
+        services.AddScoped<IEventSink, LoggingEventSink>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ISessionRepository, SessionRepository>();
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();

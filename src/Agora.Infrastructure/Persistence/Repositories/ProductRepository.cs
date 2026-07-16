@@ -55,6 +55,20 @@ internal sealed class ProductRepository(AgoraDbContext db) : IProductRepository
     public Task<Product?> FindBySkuAsync(Sku sku, CancellationToken cancellationToken) =>
         db.Products.AsNoTracking().SingleOrDefaultAsync(p => p.Sku == sku, cancellationToken);
 
+    // The cart's read (S05): every product a cart involves, in ONE query. EF turns the Contains into
+    // a `WHERE "Id" IN (…)`, which is the whole reason this method exists rather than a loop of
+    // FindByIdAsync — see the port's comment for the N+1 argument.
+    // GOTCHA: `Contains` over a large set eventually outgrows an IN list (parameter limits, plan
+    // caching); a cart holds a handful of lines and will never get there. The day something asks this
+    // for a thousand ids, the answer is a join against a temp table, not a bigger IN.
+    public async Task<IReadOnlyList<Product>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        ProductStatusFilter status,
+        CancellationToken cancellationToken) =>
+        await ApplyStatus(db.Products.AsNoTracking(), status)
+            .Where(p => ids.Contains(p.Id))
+            .ToListAsync(cancellationToken);
+
     public void Add(Product product) => db.Products.Add(product);
 
     // GOTCHA: filtering on ArchivedAtUtc is a NULL check (IS NULL / IS NOT NULL), which SQLite runs
