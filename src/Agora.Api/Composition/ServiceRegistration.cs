@@ -1,0 +1,40 @@
+using Agora.Api.Errors;
+using Agora.Application.Catalog;
+using Agora.Infrastructure;
+
+namespace Agora.Api.Composition;
+
+/// <summary>
+/// The composition root — the ONLY place in the Api allowed to see Infrastructure. The
+/// architecture tests hold this line (Agora.ArchitectureTests).
+/// </summary>
+public static class ServiceRegistration
+{
+    public static WebApplicationBuilder AddAgora(this WebApplicationBuilder builder)
+    {
+        // Persistence (EF Core + port implementations) — Infrastructure's one entry point.
+        builder.Services.AddAgoraPersistence(builder.Configuration);
+
+        // WHY: TimeProvider.System is registered ONCE, here. Everything downstream takes
+        // TimeProvider by constructor — which is why the seeder (and every later feature that
+        // reads time) can be frozen in tests. The clock is a dependency from day one.
+        builder.Services.AddSingleton(TimeProvider.System);
+
+        // Use cases: scoped, cheap, no interfaces — they ARE the application's API.
+        // LEARN: no IListProducts. An interface with exactly one implementation and no seam
+        // consumer is ceremony; ports (repositories, the clock) earn interfaces, use cases don't.
+        builder.Services.AddScoped<ListCategories>();
+        builder.Services.AddScoped<GetCategory>();
+        builder.Services.AddScoped<ListProducts>();
+        builder.Services.AddScoped<GetProduct>();
+
+        // Errors → RFC 7807, one translation table for the whole API.
+        builder.Services.AddProblemDetails();
+        builder.Services.AddExceptionHandler<AgoraExceptionHandler>();
+
+        // OpenAPI: generated from code, committed to the repo, drift-gated in CI.
+        builder.Services.AddOpenApi();
+
+        return builder;
+    }
+}

@@ -1,0 +1,20 @@
+# Local dev database only — CI never touches Docker (tests run on in-memory SQLite).
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: agora
+      POSTGRES_USER: agora
+      POSTGRES_PASSWORD: agora
+    ports:
+      - "5432:5432"
+    volumes:
+      - agora-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agora -d agora"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  agora-pgdata:

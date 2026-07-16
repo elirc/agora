@@ -5,7 +5,7 @@ consumed by a real React app — with every quality gate already armed on day on
 
 ## Scope
 
-**In:** `Agora.sln` (5 src + 4 test projects); Vite + React 19 + TS SPA scaffold in `web/`;
+**In:** `Agora.slnx` (5 src + 4 test projects); Vite + React 19 + TS SPA scaffold in `web/`;
 Product/Category read-only vertical slice (seeded, list + get) with a `Sku` value object;
 EF Core (SQLite-for-tests / Postgres-for-dev); `Agora.ArchitectureTests` (NetArchTest)
 dependency-rule suite as a CI gate; OpenAPI generated + committed at `docs/openapi/agora-v1.json`
