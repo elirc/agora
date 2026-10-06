@@ -4,6 +4,9 @@ One file per sprint. Each playbook states the sprint's goal, scope (in/out), tea
 commit-narrative sketch, teaching placements, the design debate, and exercises. The ritual all
 sprints share lives in [00-workflow.md](00-workflow.md).
 
+Sprints 01–06 are merged (one squash-merged PR each); 07–15 are written here and not yet
+built. A playbook is the plan, the merged PR is the lesson — study the PR, not just this file.
+
 | Sprint | Playbook | Phase |
 |---|---|---|
 | 01 | [Walking skeleton](sprint-01.md) | MVP |

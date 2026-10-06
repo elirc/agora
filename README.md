@@ -35,6 +35,17 @@ The course proves it mechanically, not rhetorically:
 - The **reliability surface** (transactional outbox, Idempotency-Key middleware, order webhooks)
   treats "money moved but the response was lost" as a first-class requirement.
 
+## Where the course stands
+
+**Sprints 1–6 are merged** (tag `v0.5.0` after Sprint 5): walking skeleton, identity &
+ownership, catalog admin CRUD with optimistic concurrency, Money & time-windowed pricing,
+the cart (anonymous → owned → merged), and inventory with clock-controlled reservations.
+Playbooks for sprints 7–15 are written (`docs/sprints/`) and land as merged PRs in order.
+The table below describes the **course-complete** product; rows for checkout & orders,
+payments, promotions, reviews, reliability and reporting are sprints 7–15 and are not in
+the code yet. `docs/http/` and `web/src/features/` always reflect what has actually merged
+— today that is auth, catalog, catalog-admin, pricing, cart and inventory.
+
 ## What Agora does
 
 | Domain | Highlights |

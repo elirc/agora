@@ -62,6 +62,10 @@ early: it is the map of what may depend on what — and CI fails if the map is v
 
 ## Cross-sprint arcs to watch
 
+> Status note: sprints 1–6 are merged as of 2026-10-06. Arc references to S7 and later
+> are forward references to playbooks in `docs/sprints/` — use them to know what to watch
+> for, and come back when those PRs land.
+
 - **The Money type** (S4 → S9 → S11 → S13): decimal discipline, allocation without lost pennies.
 - **The clock** (S4 → S6): why `DateTime.Now` is a bug factory when campaigns have start times.
 - **Ownership** (S2 → S5 → S7 → S13): "whose resource is this?" asked the same way everywhere —
